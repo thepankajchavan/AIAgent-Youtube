@@ -1,0 +1,37 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# ── Environment ──────────────────────────────────────────────
+.env
+*.env
+
+# ── Media artefacts ──────────────────────────────────────────
+media/audio/*
+media/video/*
+media/output/*
+!media/**/.gitkeep
+
+# ── Logs ─────────────────────────────────────────────────────
+logs/
+
+# ── IDE ──────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Secrets ──────────────────────────────────────────────────
+client_secrets.json
+youtube_token.json
+*.pem
+*.key

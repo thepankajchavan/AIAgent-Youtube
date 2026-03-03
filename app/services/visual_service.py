@@ -1,0 +1,211 @@
+"""
+Visual Service — fetches stock video clips from Pexels.
+
+Searches for relevant B-roll, downloads clips to disk, and returns
+file paths. Handles orientation filtering for shorts (portrait) vs
+long-form (landscape).
+"""
+
+from __future__ import annotations
+
+import uuid
+from pathlib import Path
+
+import httpx
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+from loguru import logger
+
+from app.core.config import get_settings
+
+settings = get_settings()
+
+PEXELS_BASE_URL = "https://api.pexels.com"
+
+
+def _headers() -> dict[str, str]:
+    return {"Authorization": settings.pexels_api_key}
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=3, max=30),
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),
+    before_sleep=lambda rs: logger.warning(
+        "Pexels search attempt {} failed, retrying …", rs.attempt_number,
+    ),
+)
+async def search_videos(
+    query: str,
+    orientation: str = "portrait",
+    per_page: int = 5,
+    min_duration: int = 5,
+    max_duration: int = 30,
+) -> list[dict]:
+    """
+    Search Pexels for stock video clips.
+
+    Args:
+        query: Search keywords.
+        orientation: "portrait" (9:16) or "landscape" (16:9).
+        per_page: Number of results to return.
+        min_duration: Minimum clip duration in seconds.
+        max_duration: Maximum clip duration in seconds.
+
+    Returns:
+        List of video metadata dicts with keys: id, url, duration, width, height, download_url.
+    """
+    logger.info(
+        "Pexels search — query='{}' orientation={} count={}",
+        query,
+        orientation,
+        per_page,
+    )
+
+    params = {
+        "query": query,
+        "orientation": orientation,
+        "per_page": per_page,
+        "size": "medium",
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{PEXELS_BASE_URL}/videos/search",
+            headers=_headers(),
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    results = []
+    for video in data.get("videos", []):
+        duration = video.get("duration", 0)
+        if not (min_duration <= duration <= max_duration):
+            continue
+
+        # Pick the best quality file that isn't huge
+        best_file = _pick_best_file(video.get("video_files", []), orientation)
+        if best_file is None:
+            continue
+
+        results.append({
+            "id": video["id"],
+            "url": video["url"],
+            "duration": duration,
+            "width": best_file["width"],
+            "height": best_file["height"],
+            "download_url": best_file["link"],
+        })
+
+    logger.info("Pexels returned {} usable clips for '{}'", len(results), query)
+    return results
+
+
+def _pick_best_file(
+    files: list[dict], orientation: str
+) -> dict | None:
+    """
+    Select the best video file from Pexels file variants.
+    Prefers HD resolution, correct aspect ratio, mp4 format.
+    """
+    scored: list[tuple[int, dict]] = []
+
+    for f in files:
+        if f.get("file_type") != "video/mp4":
+            continue
+
+        w = f.get("width", 0)
+        h = f.get("height", 0)
+        if w == 0 or h == 0:
+            continue
+
+        score = 0
+
+        # Orientation match
+        if orientation == "portrait" and h > w:
+            score += 100
+        elif orientation == "landscape" and w > h:
+            score += 100
+
+        # Resolution preference (720p–1080p sweet spot)
+        shorter = min(w, h)
+        if 720 <= shorter <= 1080:
+            score += 50
+        elif shorter > 1080:
+            score += 20  # usable but large
+
+        scored.append((score, f))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[0][1]
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=3, max=30),
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),
+)
+async def download_video(
+    download_url: str,
+    output_filename: str | None = None,
+) -> Path:
+    """
+    Download a single video file from Pexels to the video directory.
+
+    Returns:
+        Path to the downloaded file.
+    """
+    output_dir = settings.video_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if output_filename is None:
+        output_filename = f"pexels_{uuid.uuid4().hex[:12]}.mp4"
+    output_path = output_dir / output_filename
+
+    logger.info("Downloading clip → {}", output_path.name)
+
+    async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+        async with client.stream("GET", download_url) as resp:
+            resp.raise_for_status()
+            bytes_written = 0
+            with open(output_path, "wb") as f:
+                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                    f.write(chunk)
+                    bytes_written += len(chunk)
+
+    logger.info("Clip saved — {} ({:.1f}MB)", output_path.name, bytes_written / 1_048_576)
+    return output_path
+
+
+async def fetch_clips(
+    queries: list[str],
+    orientation: str = "portrait",
+    clips_per_query: int = 2,
+) -> list[Path]:
+    """
+    High-level helper: search multiple queries, download top clips, return paths.
+
+    This is the main entry point called by Celery workers.
+    """
+    downloaded: list[Path] = []
+
+    for query in queries:
+        results = await search_videos(
+            query=query,
+            orientation=orientation,
+            per_page=clips_per_query,
+        )
+        for clip in results[:clips_per_query]:
+            path = await download_video(clip["download_url"])
+            downloaded.append(path)
+
+    logger.info("Total clips downloaded: {}", len(downloaded))
+    return downloaded
