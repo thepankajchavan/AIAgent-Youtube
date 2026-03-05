@@ -7,12 +7,10 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from loguru import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
 
-from app.core.database import get_db
-from app.models.video import VideoProject, VideoStatus
 from app.api.schemas import (
     MessageResponse,
     ProjectListResponse,
@@ -20,6 +18,8 @@ from app.api.schemas import (
     ProjectSummary,
     VideoStatusEnum,
 )
+from app.core.database import get_db
+from app.models.video import VideoProject, VideoStatus
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 

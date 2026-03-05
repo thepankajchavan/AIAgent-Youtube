@@ -2,10 +2,11 @@
 
 import asyncio
 import json
+
 import redis.asyncio as aioredis
-from telegram import Bot
-from telegram.error import TelegramError, RetryAfter
 from loguru import logger
+from telegram import Bot
+from telegram.error import RetryAfter, TelegramError
 
 from app.core.config import get_settings
 
@@ -53,10 +54,7 @@ async def handle_status_update(bot: Bot, event: dict):
 
     try:
         await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=text,
-            parse_mode="Markdown"
+            chat_id=chat_id, message_id=message_id, text=text, parse_mode="Markdown"
         )
         logger.debug("Notification sent — project={} status={}", project_id, status)
 
@@ -65,7 +63,9 @@ async def handle_status_update(bot: Bot, event: dict):
         await asyncio.sleep(e.retry_after)
         # Retry once
         try:
-            await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode="Markdown")
+            await bot.edit_message_text(
+                chat_id=chat_id, message_id=message_id, text=text, parse_mode="Markdown"
+            )
         except TelegramError as retry_exc:
             logger.error("Retry failed: {}", retry_exc)
 

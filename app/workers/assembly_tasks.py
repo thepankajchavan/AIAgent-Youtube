@@ -35,7 +35,7 @@ def _mark_project_failed(project_id: str, error_message: str) -> None:
     max_retries=2,
     default_retry_delay=60,
     acks_late=True,
-    time_limit=600,       # hard kill after 10 min
+    time_limit=600,  # hard kill after 10 min
     soft_time_limit=540,  # raise SoftTimeLimitExceeded at 9 min
 )
 def assemble_video_task(
@@ -118,14 +118,17 @@ def assemble_video_task(
             # 5. Generate thumbnail from middle of video
             try:
                 thumbnail_path = generate_thumbnail(
-                    video_path=output_path,
-                    timestamp=-1  # Extract from middle
+                    video_path=output_path, timestamp=-1  # Extract from middle
                 )
                 project.thumbnail_path = str(thumbnail_path)
-                logger.info("Thumbnail generated — project={} thumbnail={}", project_id, thumbnail_path)
+                logger.info(
+                    "Thumbnail generated — project={} thumbnail={}", project_id, thumbnail_path
+                )
             except Exception as thumb_exc:
                 # Don't fail the entire pipeline if thumbnail generation fails
-                logger.warning("Thumbnail generation failed for project={}: {}", project_id, thumb_exc)
+                logger.warning(
+                    "Thumbnail generation failed for project={}: {}", project_id, thumb_exc
+                )
                 project.thumbnail_path = None
 
             # 6. Persist results
@@ -154,6 +157,9 @@ def assemble_video_task(
                 )
 
             if self.request.retries >= self.max_retries:
-                _mark_project_failed(project_id, f"Video assembly failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id,
+                    f"Video assembly failed after {self.max_retries + 1} attempts: {exc}",
+                )
                 raise
             raise self.retry(exc=exc)

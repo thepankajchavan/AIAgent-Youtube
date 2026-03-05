@@ -8,6 +8,7 @@ Provides cached access to:
 """
 
 from typing import Any
+
 from loguru import logger
 
 from app.core.cache import QueryCache
@@ -183,9 +184,9 @@ async def get_cache_statistics() -> dict[str, Any]:
             "used_memory": info.get("used_memory"),
             "used_memory_human": info.get("used_memory_human"),
             "used_memory_peak": info.get("used_memory_peak"),
-            "used_memory_peak_human": info.get("used_memory_peak_human")
+            "used_memory_peak_human": info.get("used_memory_peak_human"),
         },
-        "key_counts": {}
+        "key_counts": {},
     }
 
     # Count keys for each cache type
@@ -195,7 +196,7 @@ async def get_cache_statistics() -> dict[str, Any]:
         ("user_stats", QueryCache.PREFIX_USER_STATS),
         ("pexels", QueryCache.PREFIX_PEXELS),
         ("elevenlabs", QueryCache.PREFIX_ELEVENLABS),
-        ("youtube", QueryCache.PREFIX_YOUTUBE)
+        ("youtube", QueryCache.PREFIX_YOUTUBE),
     ]:
         # Use SCAN to count keys matching pattern
         count = 0

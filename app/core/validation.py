@@ -10,15 +10,16 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import redis
 from loguru import logger
 from sqlalchemy import create_engine, text
-import redis
 
 from app.core.config import get_settings
 
 
 class ConfigValidationError(Exception):
     """Raised when a critical configuration check fails."""
+
     pass
 
 

@@ -1,7 +1,9 @@
 """Generate test fixture media files."""
 
 from pathlib import Path
+
 from utils import create_mock_audio, create_mock_video
+
 
 def main():
     """Generate fixture files."""
@@ -23,6 +25,7 @@ def main():
     print(f"  Created: {video_path} ({video_path.stat().st_size} bytes)")
 
     print("\n[SUCCESS] All fixture files generated!")
+
 
 if __name__ == "__main__":
     main()

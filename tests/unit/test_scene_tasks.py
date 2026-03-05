@@ -1,9 +1,9 @@
 """Unit tests for scene splitting and AI visual generation tasks."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.models.video import VideoProject, VideoStatus
 
@@ -45,8 +45,8 @@ class TestSplitScenesTask:
     @patch("app.workers.scene_tasks._run_async")
     def test_split_scenes_success(self, mock_run_async, mock_db, mock_emit):
         """Test successful scene splitting stores scene_plan and returns updated pipeline_data."""
-        from app.workers.scene_tasks import split_scenes_task
         from app.services.ai_video_service import Scene
+        from app.workers.scene_tasks import split_scenes_task
 
         scenes = [
             Scene(
@@ -86,9 +86,7 @@ class TestSplitScenesTask:
         assert len(result["scene_plan"]) == 2
         assert result["scene_plan"][0]["visual_type"] == "stock_footage"
         assert result["scene_plan"][1]["visual_type"] == "ai_generated"
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.SCENE_SPLITTING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.SCENE_SPLITTING)
 
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
@@ -114,12 +112,10 @@ class TestSplitScenesTask:
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
     @patch("app.workers.scene_tasks._run_async")
-    def test_split_scenes_preserves_pipeline_data(
-        self, mock_run_async, mock_db, mock_emit
-    ):
+    def test_split_scenes_preserves_pipeline_data(self, mock_run_async, mock_db, mock_emit):
         """Test that existing pipeline_data keys are preserved."""
-        from app.workers.scene_tasks import split_scenes_task
         from app.services.ai_video_service import Scene
+        from app.workers.scene_tasks import split_scenes_task
 
         scenes = [
             Scene(
@@ -209,9 +205,7 @@ class TestGenerateVisualsTask:
 
         assert len(result["clip_paths"]) == 2
         assert result["project_id"] == "test-project-uuid"
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.VIDEO_GENERATING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.VIDEO_GENERATING)
 
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
@@ -235,9 +229,7 @@ class TestGenerateVisualsTask:
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
     @patch("app.workers.scene_tasks._run_async")
-    def test_generate_visuals_tracks_cost(
-        self, mock_run_async, mock_db, mock_emit, tmp_path
-    ):
+    def test_generate_visuals_tracks_cost(self, mock_run_async, mock_db, mock_emit, tmp_path):
         """Test that AI generation costs are tracked."""
         from app.workers.scene_tasks import generate_visuals_task
 

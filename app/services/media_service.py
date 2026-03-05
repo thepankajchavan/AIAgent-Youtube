@@ -25,7 +25,7 @@ settings = get_settings()
 
 # Target resolutions
 RESOLUTION_SHORT = (1080, 1920)  # 9:16
-RESOLUTION_LONG = (1920, 1080)   # 16:9
+RESOLUTION_LONG = (1920, 1080)  # 16:9
 
 
 def _run_ffmpeg(args: list[str], description: str) -> subprocess.CompletedProcess:
@@ -48,8 +48,10 @@ def probe_duration(file_path: Path) -> float:
     result = _run_ffmpeg(
         [
             "ffprobe",
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_format",
             str(file_path),
         ],
@@ -70,15 +72,21 @@ def scale_and_pad(
     """Scale a clip to fit inside target dimensions with black padding."""
     _run_ffmpeg(
         [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", (
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            (
                 f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
                 f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black"
             ),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
             "-an",  # strip audio from B-roll
             str(output_path),
         ],
@@ -101,13 +109,20 @@ def concatenate_clips(clip_paths: list[Path], output_path: Path) -> Path:
     try:
         _run_ffmpeg(
             [
-                "ffmpeg", "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(concat_list),
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "23",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "23",
                 "-an",
                 str(output_path),
             ],
@@ -130,16 +145,26 @@ def overlay_audio(
     """
     _run_ffmpeg(
         [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-i", str(audio_path),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-map", "0:v:0",
-            "-map", "1:a:0",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(audio_path),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
             "-shortest",
             str(output_path),
         ],
@@ -235,7 +260,9 @@ def assemble_video(
     return final_path
 
 
-def generate_thumbnail(video_path: Path, output_path: Path | None = None, timestamp: float = 0.0) -> Path:
+def generate_thumbnail(
+    video_path: Path, output_path: Path | None = None, timestamp: float = 0.0
+) -> Path:
     """Generate a thumbnail image from a video file.
 
     Args:
@@ -264,7 +291,9 @@ def generate_thumbnail(video_path: Path, output_path: Path | None = None, timest
     if timestamp < 0:
         duration = probe_duration(video_path)
         timestamp = duration / 2.0
-        logger.debug("Extracting thumbnail from middle of video ({}s / 2 = {}s)", duration, timestamp)
+        logger.debug(
+            "Extracting thumbnail from middle of video ({}s / 2 = {}s)", duration, timestamp
+        )
 
     # Sanitize output path
     validate_file_path(output_path, settings.media_path)
@@ -278,11 +307,16 @@ def generate_thumbnail(video_path: Path, output_path: Path | None = None, timest
     args = [
         "ffmpeg",
         "-y",  # Overwrite output file
-        "-ss", str(timestamp),
-        "-i", str(video_path),
-        "-vframes", "1",
-        "-q:v", "2",
-        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+        "-ss",
+        str(timestamp),
+        "-i",
+        str(video_path),
+        "-vframes",
+        "1",
+        "-q:v",
+        "2",
+        "-vf",
+        "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
         str(output_path),
     ]
 

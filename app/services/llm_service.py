@@ -8,22 +8,22 @@ never deals with SDK specifics.
 from __future__ import annotations
 
 import json
-from enum import Enum
+from enum import StrEnum
 
 import httpx
-from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
+from loguru import logger
+from openai import AsyncOpenAI
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from loguru import logger
 
 from app.core.config import get_settings
-from app.security.sanitizers import sanitize_topic
 from app.security.content_moderation import is_content_safe
+from app.security.sanitizers import sanitize_topic
 
 settings = get_settings()
 
@@ -47,7 +47,7 @@ def _get_anthropic() -> AsyncAnthropic:
 
 
 # ── Provider enum ────────────────────────────────────────────
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
 
@@ -134,10 +134,7 @@ async def _generate_anthropic(topic: str, video_format: str) -> dict:
     if cleaned.startswith("```"):
         # Handle ```json, ```python, or plain ``` openers
         first_newline = cleaned.find("\n")
-        if first_newline != -1:
-            cleaned = cleaned[first_newline + 1:]
-        else:
-            cleaned = cleaned[3:]
+        cleaned = cleaned[first_newline + 1 :] if first_newline != -1 else cleaned[3:]
     if cleaned.rstrip().endswith("```"):
         cleaned = cleaned.rstrip()[:-3]
 

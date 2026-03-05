@@ -1,20 +1,23 @@
 """Pytest configuration and shared fixtures."""
 
 import asyncio
-import pytest
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from app.main import app
-from app.core.config import Settings, get_settings
-from app.models.base import Base
+import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.core.config import Settings
 from app.core.database import get_db
+from app.main import app
+from app.models.base import Base
 
 # Test database URL
 TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/content_engine_test"
-TEST_DATABASE_URL_SYNC = "postgresql+psycopg2://postgres:postgres@localhost:5432/content_engine_test"
+TEST_DATABASE_URL_SYNC = (
+    "postgresql+psycopg2://postgres:postgres@localhost:5432/content_engine_test"
+)
 
 
 @pytest.fixture(scope="session")
@@ -64,9 +67,7 @@ async def test_engine():
 @pytest.fixture
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     """Create a fresh database session for each test."""
-    async_session = async_sessionmaker(
-        test_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    async_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
         yield session
@@ -88,6 +89,7 @@ async def client(db_session, test_settings) -> AsyncGenerator[AsyncClient, None]
         return test_settings
 
     from app.core import config
+
     original_get_settings = config.get_settings
     config.get_settings = override_get_settings
 
@@ -109,6 +111,7 @@ def fixtures_dir() -> Path:
 def sample_script(fixtures_dir) -> dict:
     """Load sample LLM script response."""
     import json
+
     script_path = fixtures_dir / "sample_script.json"
     if not script_path.exists():
         # Return default if file doesn't exist yet
@@ -116,7 +119,7 @@ def sample_script(fixtures_dir) -> dict:
             "title": "Test Video Title",
             "script": "Test script content",
             "tags": ["test", "shorts"],
-            "description": "Test description"
+            "description": "Test description",
         }
     with open(script_path) as f:
         return json.load(f)

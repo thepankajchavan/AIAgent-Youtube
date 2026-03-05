@@ -1,9 +1,9 @@
 """Unit tests for TTS service with mocked ElevenLabs API."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
 import httpx
+import pytest
 
 from app.services.tts_service import generate_speech, get_available_voices
 
@@ -46,8 +46,7 @@ class TestSpeechGeneration:
 
         # Generate speech
         result = await generate_speech(
-            text="Hello, this is a test.",
-            output_filename="test_audio.mp3"
+            text="Hello, this is a test.", output_filename="test_audio.mp3"
         )
 
         # Verify result
@@ -139,7 +138,7 @@ class TestSpeechGeneration:
             model_id="eleven_turbo_v2",
             stability=0.8,
             similarity_boost=0.9,
-            style=0.5
+            style=0.5,
         )
 
         # Verify custom parameters in payload
@@ -162,9 +161,7 @@ class TestSpeechGeneration:
         mock_response = AsyncMock()
         mock_response.raise_for_status = MagicMock(
             side_effect=httpx.HTTPStatusError(
-                "401 Unauthorized",
-                request=MagicMock(),
-                response=MagicMock(status_code=401)
+                "401 Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
             )
         )
 
@@ -180,6 +177,7 @@ class TestSpeechGeneration:
 
         # Should raise after retries exhausted (tenacity wraps in RetryError)
         from tenacity import RetryError
+
         with pytest.raises((httpx.HTTPStatusError, RetryError)):
             await generate_speech(text="Test")
 
@@ -233,21 +231,13 @@ class TestVoiceRetrieval:
         # Mock API response
         mock_voices_data = {
             "voices": [
-                {
-                    "voice_id": "voice1",
-                    "name": "Rachel",
-                    "category": "premade"
-                },
-                {
-                    "voice_id": "voice2",
-                    "name": "Domi",
-                    "category": "premade"
-                },
+                {"voice_id": "voice1", "name": "Rachel", "category": "premade"},
+                {"voice_id": "voice2", "name": "Domi", "category": "premade"},
                 {
                     "voice_id": "voice3",
                     "name": "Bella",
                     # Missing category
-                }
+                },
             ]
         }
 
@@ -303,9 +293,7 @@ class TestVoiceRetrieval:
         mock_response = AsyncMock()
         mock_response.raise_for_status = MagicMock(
             side_effect=httpx.HTTPStatusError(
-                "401 Unauthorized",
-                request=MagicMock(),
-                response=MagicMock(status_code=401)
+                "401 Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
             )
         )
 

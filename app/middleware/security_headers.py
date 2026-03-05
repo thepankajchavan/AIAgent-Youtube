@@ -1,10 +1,10 @@
 """Security headers middleware for defense-in-depth."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
 from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -63,8 +63,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # ── Content Security Policy ─────────────────────────────
         # Very strict policy for API (no content loading)
         response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; "
-            "frame-ancestors 'none'"
+            "default-src 'none'; " "frame-ancestors 'none'"
         )
 
         # ── Strict Transport Security (HTTPS only) ──────────────

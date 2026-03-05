@@ -5,13 +5,13 @@ Admin Routes — API key management endpoints.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from loguru import logger
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
 
 from app.core.database import get_db
 from app.models.api_key import APIKey
@@ -25,12 +25,14 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 class CreateAPIKeyRequest(BaseModel):
     """Request to create a new API key."""
+
     name: str = Field(..., min_length=1, max_length=255, description="Descriptive name for the key")
     rate_limit: int = Field(default=100, ge=1, le=10000, description="Requests per hour limit")
 
 
 class CreateAPIKeyResponse(BaseModel):
     """Response after creating an API key."""
+
     id: uuid.UUID
     key: str = Field(..., description="API key - save this, it won't be shown again!")
     name: str
@@ -41,6 +43,7 @@ class CreateAPIKeyResponse(BaseModel):
 
 class APIKeyResponse(BaseModel):
     """API key details (without the actual key value)."""
+
     id: uuid.UUID
     name: str
     is_active: bool
@@ -55,6 +58,7 @@ class APIKeyResponse(BaseModel):
 
 class APIKeyListResponse(BaseModel):
     """Paginated list of API keys."""
+
     keys: list[APIKeyResponse]
     total: int
     page: int
@@ -64,6 +68,7 @@ class APIKeyListResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     """Generic message response."""
+
     message: str
 
 
@@ -75,7 +80,7 @@ class MessageResponse(BaseModel):
     response_model=CreateAPIKeyResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new API key",
-    description="Generate a new API key with specified rate limit. Returns the key value - save it securely!"
+    description="Generate a new API key with specified rate limit. Returns the key value - save it securely!",
 )
 async def create_api_key(
     request: CreateAPIKeyRequest,
@@ -114,7 +119,7 @@ async def create_api_key(
     "/keys",
     response_model=APIKeyListResponse,
     summary="List all API keys",
-    description="Returns a paginated list of API keys (without key values)."
+    description="Returns a paginated list of API keys (without key values).",
 )
 async def list_api_keys(
     page: int = Query(default=1, ge=1, description="Page number"),
@@ -129,8 +134,8 @@ async def list_api_keys(
     count_q = select(func.count(APIKey.id))
 
     if active_only:
-        base = base.where(APIKey.is_active == True)
-        count_q = count_q.where(APIKey.is_active == True)
+        base = base.where(APIKey.is_active)
+        count_q = count_q.where(APIKey.is_active)
 
     # Get total count
     total_result = await db.execute(count_q)
@@ -170,7 +175,7 @@ async def list_api_keys(
     "/keys/{key_id}",
     response_model=APIKeyResponse,
     summary="Get API key details",
-    description="Returns detailed information about a specific API key (without key value)."
+    description="Returns detailed information about a specific API key (without key value).",
 )
 async def get_api_key(
     key_id: uuid.UUID,
@@ -183,8 +188,7 @@ async def get_api_key(
 
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"API key with ID {key_id} not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"API key with ID {key_id} not found."
         )
 
     return APIKeyResponse(
@@ -205,7 +209,7 @@ async def get_api_key(
     "/keys/{key_id}/revoke",
     response_model=MessageResponse,
     summary="Revoke an API key",
-    description="Deactivate an API key. It can be reactivated later if needed."
+    description="Deactivate an API key. It can be reactivated later if needed.",
 )
 async def revoke_api_key(
     key_id: uuid.UUID,
@@ -218,14 +222,12 @@ async def revoke_api_key(
 
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"API key with ID {key_id} not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"API key with ID {key_id} not found."
         )
 
     if not api_key.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="API key is already inactive."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="API key is already inactive."
         )
 
     api_key.is_active = False
@@ -240,7 +242,7 @@ async def revoke_api_key(
     "/keys/{key_id}/activate",
     response_model=MessageResponse,
     summary="Activate an API key",
-    description="Reactivate a previously revoked API key."
+    description="Reactivate a previously revoked API key.",
 )
 async def activate_api_key(
     key_id: uuid.UUID,
@@ -253,14 +255,12 @@ async def activate_api_key(
 
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"API key with ID {key_id} not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"API key with ID {key_id} not found."
         )
 
     if api_key.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="API key is already active."
+            status_code=status.HTTP_400_BAD_REQUEST, detail="API key is already active."
         )
 
     api_key.is_active = True
@@ -276,7 +276,7 @@ async def activate_api_key(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
     summary="Delete an API key",
-    description="Permanently delete an API key. This action cannot be undone."
+    description="Permanently delete an API key. This action cannot be undone.",
 )
 async def delete_api_key(
     key_id: uuid.UUID,
@@ -289,8 +289,7 @@ async def delete_api_key(
 
     if not api_key:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"API key with ID {key_id} not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"API key with ID {key_id} not found."
         )
 
     logger.warning(f"Deleting API key: {api_key.name} (ID: {api_key.id})")
@@ -304,6 +303,7 @@ async def delete_api_key(
 
 class DLQTaskResponse(BaseModel):
     """DLQ task details."""
+
     task_id: str
     task_name: str
     project_id: int | None
@@ -316,12 +316,14 @@ class DLQTaskResponse(BaseModel):
 
 class DLQListResponse(BaseModel):
     """List of DLQ tasks."""
+
     tasks: list[DLQTaskResponse]
     total: int
 
 
 class DLQStatsResponse(BaseModel):
     """DLQ statistics."""
+
     total_tasks: int
     failed_tasks: int
     retried_tasks: int
@@ -334,7 +336,7 @@ class DLQStatsResponse(BaseModel):
     "/dlq/tasks",
     response_model=DLQListResponse,
     summary="List all DLQ tasks",
-    description="Returns all permanently failed tasks in the Dead Letter Queue."
+    description="Returns all permanently failed tasks in the Dead Letter Queue.",
 )
 async def list_dlq_tasks(
     limit: int = Query(default=100, ge=1, le=1000, description="Maximum tasks to retrieve"),
@@ -349,16 +351,20 @@ async def list_dlq_tasks(
             DLQTaskResponse(
                 task_id=task["task_id"],
                 task_name=task["task_name"],
-                project_id=int(task["project_id"]) if task.get("project_id") and task["project_id"] != "None" else None,
+                project_id=(
+                    int(task["project_id"])
+                    if task.get("project_id") and task["project_id"] != "None"
+                    else None
+                ),
                 exception_type=task["exception_type"],
                 exception_message=task["exception_message"],
                 failed_at=task["failed_at"],
                 retry_count=int(task.get("retry_count", 0)),
-                status=task["status"]
+                status=task["status"],
             )
             for task in tasks
         ],
-        total=len(tasks)
+        total=len(tasks),
     )
 
 
@@ -366,7 +372,7 @@ async def list_dlq_tasks(
     "/dlq/tasks/{task_id}",
     response_model=dict,
     summary="Get DLQ task details",
-    description="Returns detailed information about a specific task in the DLQ, including full traceback."
+    description="Returns detailed information about a specific task in the DLQ, including full traceback.",
 )
 async def get_dlq_task(task_id: str) -> dict:
     """Get details of a specific DLQ task."""
@@ -376,8 +382,7 @@ async def get_dlq_task(task_id: str) -> dict:
 
     if not task:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found in DLQ."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found in DLQ."
         )
 
     return task
@@ -387,7 +392,7 @@ async def get_dlq_task(task_id: str) -> dict:
     "/dlq/stats",
     response_model=DLQStatsResponse,
     summary="Get DLQ statistics",
-    description="Returns statistics about the Dead Letter Queue."
+    description="Returns statistics about the Dead Letter Queue.",
 )
 async def get_dlq_stats() -> DLQStatsResponse:
     """Get DLQ statistics."""
@@ -402,7 +407,7 @@ async def get_dlq_stats() -> DLQStatsResponse:
     "/dlq/tasks/{task_id}/retry",
     response_model=MessageResponse,
     summary="Retry a DLQ task",
-    description="Retry a failed task from the DLQ by triggering the pipeline again."
+    description="Retry a failed task from the DLQ by triggering the pipeline again.",
 )
 async def retry_dlq_task(
     task_id: str,
@@ -416,27 +421,23 @@ async def retry_dlq_task(
 
     if not task:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found in DLQ."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found in DLQ."
         )
 
     project_id = task.get("project_id")
     if not project_id or project_id == "None":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Task does not have an associated project ID. Cannot retry."
+            detail="Task does not have an associated project ID. Cannot retry.",
         )
 
     # Get project from database
-    result = await db.execute(
-        select(VideoProject).where(VideoProject.id == int(project_id))
-    )
+    result = await db.execute(select(VideoProject).where(VideoProject.id == int(project_id)))
     project = result.scalar_one_or_none()
 
     if not project:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Project {project_id} not found."
         )
 
     # Reset project to PENDING
@@ -449,6 +450,7 @@ async def retry_dlq_task(
 
     # Trigger new pipeline
     from app.workers.pipeline_tasks import run_pipeline
+
     run_pipeline.delay(project_id=int(project_id))
 
     logger.info(f"Retrying DLQ task {task_id} for project {project_id}")
@@ -463,7 +465,7 @@ async def retry_dlq_task(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
     summary="Remove a DLQ task",
-    description="Remove a task from the DLQ after manual resolution."
+    description="Remove a task from the DLQ after manual resolution.",
 )
 async def remove_dlq_task(task_id: str) -> None:
     """Remove a task from the DLQ."""
@@ -473,8 +475,7 @@ async def remove_dlq_task(task_id: str) -> None:
 
     if not removed:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found in DLQ."
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found in DLQ."
         )
 
     logger.info(f"Removed task {task_id} from DLQ")

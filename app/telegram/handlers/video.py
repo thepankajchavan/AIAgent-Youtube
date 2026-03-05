@@ -1,13 +1,13 @@
 """Video generation command handlers."""
 
 import httpx
+from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
-from loguru import logger
 
 from app.core.config import get_settings
-from app.workers.db import get_sync_db
 from app.models.video import VideoProject
+from app.workers.db import get_sync_db
 
 settings = get_settings()
 
@@ -22,17 +22,13 @@ async def video_long_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await _generate_video(update, context, video_format="long")
 
 
-async def _generate_video(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    video_format: str
-):
+async def _generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE, video_format: str):
     """Common logic for video generation."""
     if not update.message or not context.args:
         await update.message.reply_text(
             f"Usage: `/video{'_long' if video_format == 'long' else ''} <topic>`\n\n"
             "Example: `/video 5 facts about Mars`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
 
@@ -56,7 +52,7 @@ async def _generate_video(
         f"📝 Topic: {topic}\n"
         f"📐 Format: {format_text}\n"
         f"⏳ Status: Initializing...",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
     # Resolve visual strategy from settings
@@ -65,7 +61,11 @@ async def _generate_video(
     # Call FastAPI pipeline endpoint
     try:
         headers = {}
-        if settings.api_auth_enabled and hasattr(settings, "telegram_internal_api_key") and settings.telegram_internal_api_key:
+        if (
+            settings.api_auth_enabled
+            and hasattr(settings, "telegram_internal_api_key")
+            and settings.telegram_internal_api_key
+        ):
             headers["X-API-Key"] = settings.telegram_internal_api_key
 
         async with httpx.AsyncClient() as client:
@@ -79,7 +79,7 @@ async def _generate_video(
                     "visual_strategy": visual_strategy,
                 },
                 headers=headers,
-                timeout=10.0
+                timeout=10.0,
             )
             response.raise_for_status()
             data = response.json()
@@ -102,27 +102,24 @@ async def _generate_video(
             f"📐 Format: {format_text}\n"
             f"🆔 Project: `{project_id}`\n"
             f"✍️ Status: Generating script...",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
 
         logger.info(
             "Video requested — user={} chat={} project={}",
             update.effective_user.id,
             update.effective_chat.id,
-            project_id
+            project_id,
         )
 
     except httpx.HTTPStatusError as exc:
         logger.error("API error: {}", exc)
         await status_msg.edit_text(
-            f"❌ *Failed to start pipeline*\n\n"
-            f"Error: {exc.response.text}",
-            parse_mode="Markdown"
+            f"❌ *Failed to start pipeline*\n\n" f"Error: {exc.response.text}",
+            parse_mode="Markdown",
         )
     except Exception as exc:
         logger.error("Unexpected error: {}", exc)
         await status_msg.edit_text(
-            "❌ *Unexpected error*\n\n"
-            "Please try again later.",
-            parse_mode="Markdown"
+            "❌ *Unexpected error*\n\n" "Please try again later.", parse_mode="Markdown"
         )

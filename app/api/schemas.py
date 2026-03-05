@@ -6,24 +6,24 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-
 # ── Enums (mirror DB enums for the API layer) ────────────────
 
-class VideoFormatEnum(str, Enum):
+
+class VideoFormatEnum(StrEnum):
     SHORT = "short"
     LONG = "long"
 
 
-class LLMProviderEnum(str, Enum):
+class LLMProviderEnum(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
 
 
-class VideoStatusEnum(str, Enum):
+class VideoStatusEnum(StrEnum):
     PENDING = "pending"
     SCRIPT_GENERATING = "script_generating"
     SCENE_SPLITTING = "scene_splitting"
@@ -35,7 +35,7 @@ class VideoStatusEnum(str, Enum):
     FAILED = "failed"
 
 
-class VisualStrategyEnum(str, Enum):
+class VisualStrategyEnum(StrEnum):
     STOCK_ONLY = "stock_only"
     AI_ONLY = "ai_only"
     HYBRID = "hybrid"
@@ -43,8 +43,10 @@ class VisualStrategyEnum(str, Enum):
 
 # ── Pipeline ─────────────────────────────────────────────────
 
+
 class PipelineRequest(BaseModel):
     """Request body for triggering a new video pipeline."""
+
     topic: str = Field(
         ...,
         min_length=3,
@@ -76,6 +78,7 @@ class PipelineRequest(BaseModel):
 
 class PipelineResponse(BaseModel):
     """Response after triggering a pipeline."""
+
     project_id: uuid.UUID
     celery_task_id: str | None = None
     status: VideoStatusEnum
@@ -84,8 +87,10 @@ class PipelineResponse(BaseModel):
 
 # ── Project ──────────────────────────────────────────────────
 
+
 class ProjectResponse(BaseModel):
     """Full project detail."""
+
     id: uuid.UUID
     topic: str
     script: str | None = None
@@ -110,6 +115,7 @@ class ProjectResponse(BaseModel):
 
 class ProjectListResponse(BaseModel):
     """Paginated project listing."""
+
     total: int
     page: int
     per_page: int
@@ -118,6 +124,7 @@ class ProjectListResponse(BaseModel):
 
 class ProjectSummary(BaseModel):
     """Lightweight project info for list views."""
+
     id: uuid.UUID
     topic: str
     status: VideoStatusEnum
@@ -134,8 +141,10 @@ ProjectListResponse.model_rebuild()
 
 # ── Celery Task Status ───────────────────────────────────────
 
+
 class TaskStatusResponse(BaseModel):
     """Status of a Celery background task."""
+
     task_id: str
     status: str
     result: dict | str | None = None
@@ -143,13 +152,16 @@ class TaskStatusResponse(BaseModel):
 
 # ── Generic ──────────────────────────────────────────────────
 
+
 class MessageResponse(BaseModel):
     """Generic message response."""
+
     message: str
 
 
 class HealthResponse(BaseModel):
     """System health check response."""
+
     status: str
     app: str
     database: str

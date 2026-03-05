@@ -13,12 +13,12 @@ fallback chain with per-day budget tracking via Redis.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Literal
 
 import httpx
 from loguru import logger
@@ -146,8 +146,14 @@ async def split_script_to_scenes(
     """
     from app.services.llm_service import LLMProvider
 
-    orientation = "vertical 9:16 portrait" if video_format == "short" else "horizontal 16:9 landscape"
-    format_name = "YouTube Short (30-60 seconds)" if video_format == "short" else "YouTube long-form (5-10 minutes)"
+    orientation = (
+        "vertical 9:16 portrait" if video_format == "short" else "horizontal 16:9 landscape"
+    )
+    format_name = (
+        "YouTube Short (30-60 seconds)"
+        if video_format == "short"
+        else "YouTube long-form (5-10 minutes)"
+    )
 
     system_prompt = SCENE_SPLIT_SYSTEM_PROMPT.format(
         format=format_name,
@@ -231,10 +237,7 @@ async def _call_anthropic_for_scenes(system_prompt: str, user_content: str) -> d
     # Strip markdown fences if present
     if raw.startswith("```"):
         first_newline = raw.find("\n")
-        if first_newline != -1:
-            raw = raw[first_newline + 1 :]
-        else:
-            raw = raw[3:]
+        raw = raw[first_newline + 1 :] if first_newline != -1 else raw[3:]
     if raw.rstrip().endswith("```"):
         raw = raw.rstrip()[:-3]
     return json.loads(raw.strip())
@@ -272,7 +275,9 @@ async def generate_ai_video_runway(
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(settings.ai_video_timeout)) as client:
         # 1. Create generation task
-        logger.info("Runway Gen-3 — creating task (duration={}s, aspect={})", duration, aspect_ratio)
+        logger.info(
+            "Runway Gen-3 — creating task (duration={}s, aspect={})", duration, aspect_ratio
+        )
         create_response = await client.post(
             "https://api.dev.runwayml.com/v1/text_to_video",
             headers={
@@ -293,7 +298,7 @@ async def generate_ai_video_runway(
 
         # 2. Poll for completion
         poll_url = f"https://api.dev.runwayml.com/v1/tasks/{task_id}"
-        for attempt in range(120):  # max ~10 minutes polling
+        for _attempt in range(120):  # max ~10 minutes polling
             await asyncio.sleep(5)
             poll_response = await client.get(
                 poll_url,
@@ -388,7 +393,7 @@ async def generate_ai_video_stability(
 
         # Step 3: Poll for result
         poll_url = f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}"
-        for attempt in range(90):  # max ~7.5 minutes
+        for _attempt in range(90):  # max ~7.5 minutes
             await asyncio.sleep(5)
             result_response = await client.get(
                 poll_url,
@@ -406,10 +411,8 @@ async def generate_ai_video_stability(
             raise TimeoutError(f"Stability video {generation_id} did not complete within timeout")
 
         # Clean up temporary image
-        try:
+        with contextlib.suppress(OSError):
             image_path.unlink()
-        except OSError:
-            pass
 
     logger.info("Stability video saved — {}", output_file)
     return output_file
@@ -465,7 +468,7 @@ async def generate_ai_video_kling(
 
         # 2. Poll for completion
         poll_url = f"https://api.klingai.com/v1/videos/text2video/{task_id}"
-        for attempt in range(120):
+        for _attempt in range(120):
             await asyncio.sleep(5)
             poll_response = await client.get(
                 poll_url,
@@ -533,9 +536,7 @@ async def _fetch_stock_for_scene(scene: Scene, orientation: str) -> Path:
             exc,
         )
     # Ultimate fallback: solid-colour placeholder
-    placeholders = await create_placeholder_video(
-        scene.stock_query, int(scene.duration_seconds)
-    )
+    placeholders = await create_placeholder_video(scene.stock_query, int(scene.duration_seconds))
     return placeholders[0]
 
 
@@ -580,7 +581,9 @@ async def generate_scene_visual(
         return path
 
     if not await check_budget(estimated):
-        logger.warning("Daily budget exceeded, falling back to stock for scene {}", scene.scene_number)
+        logger.warning(
+            "Daily budget exceeded, falling back to stock for scene {}", scene.scene_number
+        )
         path = await _fetch_stock_for_scene(scene, orientation)
         scene.video_path = str(path)
         scene.provider_used = "pexels"
@@ -613,7 +616,9 @@ async def generate_scene_visual(
             scene.generation_cost = cost
             scene.provider_used = secondary
             scene.video_path = str(path)
-            logger.info("Scene {} generated via {} fallback (${:.2f})", scene.scene_number, secondary, cost)
+            logger.info(
+                "Scene {} generated via {} fallback (${:.2f})", scene.scene_number, secondary, cost
+            )
             return path
         except Exception as exc:
             logger.warning(

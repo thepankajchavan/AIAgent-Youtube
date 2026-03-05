@@ -1,13 +1,12 @@
 import enum
-import uuid
 
-from sqlalchemy import BigInteger, Enum, Float, Integer, JSON, String, Text
+from sqlalchemy import JSON, BigInteger, Enum, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
-class VideoStatus(str, enum.Enum):
+class VideoStatus(enum.StrEnum):
     """Lifecycle states of a video project."""
 
     PENDING = "pending"
@@ -21,12 +20,12 @@ class VideoStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class VideoFormat(str, enum.Enum):
-    SHORT = "short"    # 9:16 vertical
-    LONG = "long"      # 16:9 horizontal
+class VideoFormat(enum.StrEnum):
+    SHORT = "short"  # 9:16 vertical
+    LONG = "long"  # 16:9 horizontal
 
 
-class VisualStrategy(str, enum.Enum):
+class VisualStrategy(enum.StrEnum):
     STOCK_ONLY = "stock_only"
     AI_ONLY = "ai_only"
     HYBRID = "hybrid"
@@ -61,7 +60,7 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         String(20),
         default="openai",
         nullable=False,
-        comment="LLM provider used: openai or anthropic"
+        comment="LLM provider used: openai or anthropic",
     )
 
     # ── Celery tracking ──────────────────────────────────────
@@ -71,13 +70,13 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     last_completed_step: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
-        comment="Last successfully completed pipeline step (for resuming)"
+        comment="Last successfully completed pipeline step (for resuming)",
     )
     artifacts_available: Mapped[dict | None] = mapped_column(
         JSON,
         nullable=True,
         default=None,
-        comment="JSON object tracking which intermediate artifacts exist"
+        comment="JSON object tracking which intermediate artifacts exist",
     )
 
     # ── AI Video Generation ───────────────────────────────────
@@ -112,7 +111,7 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     thumbnail_path: Mapped[str | None] = mapped_column(
         String(1024),
         nullable=True,
-        comment="Path to video thumbnail (JPEG extracted from middle frame)"
+        comment="Path to video thumbnail (JPEG extracted from middle frame)",
     )
 
     # ── YouTube ──────────────────────────────────────────────
@@ -121,20 +120,13 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # ── Telegram integration ─────────────────────────────────
     telegram_user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        index=True,
-        comment="Telegram user ID who requested this video"
+        BigInteger, nullable=True, index=True, comment="Telegram user ID who requested this video"
     )
     telegram_chat_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        comment="Telegram chat ID where video was requested"
+        BigInteger, nullable=True, comment="Telegram chat ID where video was requested"
     )
     telegram_message_id: Mapped[int | None] = mapped_column(
-        Integer,
-        nullable=True,
-        comment="Telegram message ID to edit with status updates"
+        Integer, nullable=True, comment="Telegram message ID to edit with status updates"
     )
 
     # ── Error tracking ───────────────────────────────────────
@@ -147,8 +139,8 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     _VALID_TRANSITIONS: dict[VideoStatus, set[VideoStatus]] = {
         VideoStatus.PENDING: {VideoStatus.SCRIPT_GENERATING, VideoStatus.FAILED},
         VideoStatus.SCRIPT_GENERATING: {
-            VideoStatus.SCENE_SPLITTING,      # AI video path
-            VideoStatus.AUDIO_GENERATING,     # stock_only path (direct)
+            VideoStatus.SCENE_SPLITTING,  # AI video path
+            VideoStatus.AUDIO_GENERATING,  # stock_only path (direct)
             VideoStatus.VIDEO_GENERATING,
             VideoStatus.FAILED,
         },
@@ -157,8 +149,16 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             VideoStatus.VIDEO_GENERATING,
             VideoStatus.FAILED,
         },
-        VideoStatus.AUDIO_GENERATING: {VideoStatus.VIDEO_GENERATING, VideoStatus.ASSEMBLING, VideoStatus.FAILED},
-        VideoStatus.VIDEO_GENERATING: {VideoStatus.AUDIO_GENERATING, VideoStatus.ASSEMBLING, VideoStatus.FAILED},
+        VideoStatus.AUDIO_GENERATING: {
+            VideoStatus.VIDEO_GENERATING,
+            VideoStatus.ASSEMBLING,
+            VideoStatus.FAILED,
+        },
+        VideoStatus.VIDEO_GENERATING: {
+            VideoStatus.AUDIO_GENERATING,
+            VideoStatus.ASSEMBLING,
+            VideoStatus.FAILED,
+        },
         VideoStatus.ASSEMBLING: {VideoStatus.UPLOADING, VideoStatus.COMPLETED, VideoStatus.FAILED},
         VideoStatus.UPLOADING: {VideoStatus.COMPLETED, VideoStatus.FAILED},
         VideoStatus.COMPLETED: set(),
@@ -168,7 +168,5 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     def validate_status_transition(self, new_status: VideoStatus) -> bool:
         """Validate state transition is allowed by FSM."""
         if new_status not in self._VALID_TRANSITIONS.get(self.status, set()):
-            raise ValueError(
-                f"Invalid transition: {self.status.value} → {new_status.value}"
-            )
+            raise ValueError(f"Invalid transition: {self.status.value} → {new_status.value}")
         return True

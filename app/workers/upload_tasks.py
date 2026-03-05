@@ -34,7 +34,7 @@ def _mark_project_failed(project_id: str, error_message: str) -> None:
     max_retries=2,
     default_retry_delay=120,
     acks_late=True,
-    time_limit=900,       # hard kill after 15 min
+    time_limit=900,  # hard kill after 15 min
     soft_time_limit=840,  # raise SoftTimeLimitExceeded at 14 min
 )
 def upload_to_youtube_task(
@@ -151,6 +151,9 @@ def upload_to_youtube_task(
                 )
 
             if self.request.retries >= self.max_retries:
-                _mark_project_failed(project_id, f"YouTube upload failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id,
+                    f"YouTube upload failed after {self.max_retries + 1} attempts: {exc}",
+                )
                 raise
             raise self.retry(exc=exc)

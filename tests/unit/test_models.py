@@ -1,14 +1,15 @@
 """Unit tests for database models."""
 
-import pytest
-from datetime import datetime, timedelta
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from datetime import datetime
 
-from app.models.base import Base
-from app.models.video import VideoProject, VideoStatus, VideoFormat
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from app.models.api_key import APIKey
+from app.models.base import Base
 from app.models.telegram_user import TelegramUser
+from app.models.video import VideoFormat, VideoProject, VideoStatus
 
 
 @pytest.fixture(scope="module")
@@ -37,9 +38,7 @@ class TestVideoProject:
     def test_create_video_project(self, db_session):
         """Test creating a new video project."""
         project = VideoProject(
-            topic="5 facts about space",
-            format=VideoFormat.SHORT,
-            provider="openai"
+            topic="5 facts about space", format=VideoFormat.SHORT, provider="openai"
         )
 
         db_session.add(project)
@@ -99,7 +98,7 @@ class TestVideoProject:
             VideoStatus.ASSEMBLING,
             VideoStatus.UPLOADING,
             VideoStatus.COMPLETED,
-            VideoStatus.FAILED
+            VideoStatus.FAILED,
         ]
 
         for status in statuses:
@@ -148,7 +147,7 @@ class TestVideoProject:
             topic="Test",
             telegram_user_id=123456789,
             telegram_chat_id=987654321,
-            telegram_message_id=42
+            telegram_message_id=42,
         )
 
         db_session.add(project)
@@ -163,7 +162,7 @@ class TestVideoProject:
         project = VideoProject(
             topic="Test",
             youtube_video_id="abc123xyz",
-            youtube_url="https://www.youtube.com/watch?v=abc123xyz"
+            youtube_url="https://www.youtube.com/watch?v=abc123xyz",
         )
 
         db_session.add(project)
@@ -175,9 +174,7 @@ class TestVideoProject:
     def test_video_project_error_tracking(self, db_session):
         """Test error message storage."""
         project = VideoProject(
-            topic="Test",
-            status=VideoStatus.FAILED,
-            error_message="API rate limit exceeded"
+            topic="Test", status=VideoStatus.FAILED, error_message="API rate limit exceeded"
         )
 
         db_session.add(project)
@@ -192,7 +189,7 @@ class TestVideoProject:
             topic="Test",
             audio_path="/media/audio/test_audio.mp3",
             video_path="/media/video/test_video.mp4",
-            output_path="/media/output/final_test.mp4"
+            output_path="/media/output/final_test.mp4",
         )
 
         db_session.add(project)
@@ -208,10 +205,7 @@ class TestAPIKey:
 
     def test_create_api_key(self, db_session):
         """Test creating a new API key."""
-        api_key = APIKey(
-            key="ce_test_key_12345",
-            name="Test Application"
-        )
+        api_key = APIKey(key="ce_test_key_12345", name="Test Application")
 
         db_session.add(api_key)
         db_session.commit()
@@ -248,11 +242,7 @@ class TestAPIKey:
 
     def test_api_key_rate_limiting(self, db_session):
         """Test rate limiting fields."""
-        api_key = APIKey(
-            key="ce_test_ratelimit",
-            name="Rate Limited Key",
-            rate_limit=50
-        )
+        api_key = APIKey(key="ce_test_ratelimit", name="Rate Limited Key", rate_limit=50)
 
         db_session.add(api_key)
         db_session.commit()
@@ -332,11 +322,7 @@ class TestTelegramUser:
 
     def test_telegram_user_repr(self, db_session):
         """Test TelegramUser string representation."""
-        user = TelegramUser(
-            user_id=1230,
-            username="test_user",
-            is_allowed=True
-        )
+        user = TelegramUser(user_id=1230, username="test_user", is_allowed=True)
         db_session.add(user)
         db_session.commit()
 
@@ -347,10 +333,7 @@ class TestTelegramUser:
 
     def test_telegram_user_without_username(self, db_session):
         """Test Telegram user without username."""
-        user = TelegramUser(
-            user_id=999,
-            first_name="NoUsername"
-        )
+        user = TelegramUser(user_id=999, first_name="NoUsername")
         db_session.add(user)
         db_session.commit()
 
@@ -422,10 +405,14 @@ class TestModelRelationships:
         db_session.commit()
 
         # Filter by our specific projects to avoid pollution from earlier tests
-        completed = db_session.query(VideoProject).filter(
-            VideoProject.status == VideoStatus.COMPLETED,
-            VideoProject.topic.like("Query Test%"),
-        ).all()
+        completed = (
+            db_session.query(VideoProject)
+            .filter(
+                VideoProject.status == VideoStatus.COMPLETED,
+                VideoProject.topic.like("Query Test%"),
+            )
+            .all()
+        )
 
         assert len(completed) == 2
         assert all(p.status == VideoStatus.COMPLETED for p in completed)
@@ -439,10 +426,14 @@ class TestModelRelationships:
         db_session.add_all([key1, key2, key3])
         db_session.commit()
 
-        active_keys = db_session.query(APIKey).filter(
-            APIKey.is_active == True,
-            APIKey.name.like("Rel %"),
-        ).all()
+        active_keys = (
+            db_session.query(APIKey)
+            .filter(
+                APIKey.is_active,
+                APIKey.name.like("Rel %"),
+            )
+            .all()
+        )
 
         assert len(active_keys) == 2
         assert all(k.is_active for k in active_keys)
@@ -456,10 +447,14 @@ class TestModelRelationships:
         db_session.add_all([user1, user2, user3])
         db_session.commit()
 
-        allowed = db_session.query(TelegramUser).filter(
-            TelegramUser.is_allowed == True,
-            TelegramUser.username.like("rel_%"),
-        ).all()
+        allowed = (
+            db_session.query(TelegramUser)
+            .filter(
+                TelegramUser.is_allowed,
+                TelegramUser.username.like("rel_%"),
+            )
+            .all()
+        )
 
         assert len(allowed) == 2
         assert all(u.is_allowed for u in allowed)

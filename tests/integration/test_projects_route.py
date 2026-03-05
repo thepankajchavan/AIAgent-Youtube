@@ -1,10 +1,11 @@
 """Integration tests for projects routes."""
 
-import pytest
 import uuid
+
+import pytest
 from httpx import AsyncClient
 
-from app.models.video import VideoProject, VideoStatus, VideoFormat
+from app.models.video import VideoProject, VideoStatus
 
 
 class TestListProjects:
@@ -24,10 +25,7 @@ class TestListProjects:
     async def test_list_projects_with_data(self, client: AsyncClient, db_session):
         """Test listing multiple projects."""
         # Create test projects
-        projects = [
-            VideoProject(topic=f"Test {i}", status=VideoStatus.PENDING)
-            for i in range(5)
-        ]
+        projects = [VideoProject(topic=f"Test {i}", status=VideoStatus.PENDING) for i in range(5)]
         for p in projects:
             db_session.add(p)
         await db_session.commit()
@@ -87,9 +85,7 @@ class TestGetProject:
     async def test_get_project_success(self, client: AsyncClient, db_session):
         """Test getting a project by ID."""
         project = VideoProject(
-            topic="Test project",
-            status=VideoStatus.COMPLETED,
-            script="Test script content"
+            topic="Test project", status=VideoStatus.COMPLETED, script="Test script content"
         )
         db_session.add(project)
         await db_session.commit()
@@ -149,9 +145,7 @@ class TestRetryProject:
     async def test_retry_failed_project(self, client: AsyncClient, db_session, mocker):
         """Test retrying a failed project."""
         project = VideoProject(
-            topic="Failed project",
-            status=VideoStatus.FAILED,
-            error_message="Previous error"
+            topic="Failed project", status=VideoStatus.FAILED, error_message="Previous error"
         )
         db_session.add(project)
         await db_session.commit()
@@ -159,10 +153,7 @@ class TestRetryProject:
         # Mock Celery
         mock_result = mocker.MagicMock()
         mock_result.id = "retry-task-123"
-        mocker.patch(
-            "app.api.routes.projects.run_pipeline_task.delay",
-            return_value=mock_result
-        )
+        mocker.patch("app.api.routes.projects.run_pipeline_task.delay", return_value=mock_result)
 
         response = await client.post(f"/api/v1/projects/{project.id}/retry")
 

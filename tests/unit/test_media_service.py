@@ -1,17 +1,17 @@
 """Unit tests for Media service with mocked FFmpeg operations."""
 
-import pytest
 import json
-import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 from app.services.media_service import (
-    probe_duration,
-    scale_and_pad,
+    assemble_video,
     concatenate_clips,
     overlay_audio,
-    assemble_video,
+    probe_duration,
+    scale_and_pad,
 )
 
 
@@ -21,11 +21,7 @@ class TestProbeOperations:
     def test_probe_duration_success(self, mocker):
         """Test successful duration probing."""
         # Mock ffprobe output
-        mock_output = json.dumps({
-            "format": {
-                "duration": "12.5"
-            }
-        })
+        mock_output = json.dumps({"format": {"duration": "12.5"}})
 
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -233,7 +229,7 @@ class TestAssembleVideo:
             clip_paths=[clip1, clip2],
             audio_path=audio_path,
             video_format="short",
-            project_id="test123"
+            project_id="test123",
         )
 
         # Verify result
@@ -255,15 +251,11 @@ class TestAssembleVideo:
         # Mock validate_file_path to raise error
         mocker.patch(
             "app.services.media_service.validate_file_path",
-            side_effect=ValueError("Path traversal detected")
+            side_effect=ValueError("Path traversal detected"),
         )
 
         with pytest.raises(ValueError, match="Path traversal detected"):
-            assemble_video(
-                clip_paths=[clip1],
-                audio_path=audio_path,
-                video_format="short"
-            )
+            assemble_video(clip_paths=[clip1], audio_path=audio_path, video_format="short")
 
     def test_assemble_video_short_format_resolution(self, mocker, tmp_path):
         """Test that short format uses 9:16 resolution."""
@@ -291,11 +283,7 @@ class TestAssembleVideo:
         mocker.patch("app.services.media_service.overlay_audio", side_effect=lambda v, a, o: o)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
-        assemble_video(
-            clip_paths=[clip],
-            audio_path=audio,
-            video_format="short"
-        )
+        assemble_video(clip_paths=[clip], audio_path=audio, video_format="short")
 
         # Verify 9:16 resolution (1080x1920)
         assert scale_calls[0] == (1080, 1920)
@@ -325,11 +313,7 @@ class TestAssembleVideo:
         mocker.patch("app.services.media_service.overlay_audio", side_effect=lambda v, a, o: o)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
-        assemble_video(
-            clip_paths=[clip],
-            audio_path=audio,
-            video_format="long"
-        )
+        assemble_video(clip_paths=[clip], audio_path=audio, video_format="long")
 
         # Verify 16:9 resolution (1920x1080)
         assert scale_calls[0] == (1920, 1080)

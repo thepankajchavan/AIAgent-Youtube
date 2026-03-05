@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+
 from cryptography.fernet import Fernet, InvalidToken
 from loguru import logger
 
@@ -17,7 +18,7 @@ def get_encryption_key() -> bytes:
     Raises:
         ValueError: If ENCRYPTION_KEY is not configured
     """
-    key_str = getattr(settings, 'encryption_key', None)
+    key_str = getattr(settings, "encryption_key", None)
 
     if not key_str:
         raise ValueError(
@@ -119,7 +120,7 @@ def encrypt_file(input_path: Path, output_path: Path | None = None) -> Path:
     fernet = Fernet(key)
 
     if output_path is None:
-        output_path = input_path.with_suffix(input_path.suffix + '.encrypted')
+        output_path = input_path.with_suffix(input_path.suffix + ".encrypted")
 
     # Read plaintext
     plaintext = input_path.read_bytes()
@@ -153,10 +154,10 @@ def decrypt_file(input_path: Path, output_path: Path | None = None) -> Path:
 
     if output_path is None:
         # Remove .encrypted suffix if present
-        if input_path.suffix == '.encrypted':
-            output_path = input_path.with_suffix('')
+        if input_path.suffix == ".encrypted":
+            output_path = input_path.with_suffix("")
         else:
-            output_path = input_path.with_suffix('.decrypted')
+            output_path = input_path.with_suffix(".decrypted")
 
     # Read ciphertext
     ciphertext = input_path.read_bytes()
@@ -173,7 +174,9 @@ def decrypt_file(input_path: Path, output_path: Path | None = None) -> Path:
 
     except InvalidToken as e:
         logger.error(f"Failed to decrypt {input_path} - invalid token or wrong key")
-        raise ValueError(f"Decryption failed for {input_path} - invalid token or wrong encryption key") from e
+        raise ValueError(
+            f"Decryption failed for {input_path} - invalid token or wrong encryption key"
+        ) from e
 
 
 def generate_key() -> str:

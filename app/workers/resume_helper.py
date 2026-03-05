@@ -5,7 +5,7 @@ Tracks completed steps and skips them on retry, avoiding redundant work.
 """
 
 from pathlib import Path
-from typing import Any
+
 from loguru import logger
 
 from app.models.video import VideoProject, VideoStatus
@@ -15,13 +15,7 @@ class PipelineResume:
     """Handles smart resumption of failed pipelines."""
 
     # Define step ordering for resume logic
-    STEP_ORDER = [
-        "script",
-        "audio",
-        "video",
-        "assembly",
-        "upload"
-    ]
+    STEP_ORDER = ["script", "audio", "video", "assembly", "upload"]
 
     @classmethod
     def mark_step_completed(cls, project: VideoProject, step: str) -> None:
@@ -46,7 +40,9 @@ class PipelineResume:
         logger.debug(f"Project {project.id}: marked step '{step}' as completed")
 
     @classmethod
-    def mark_artifact_available(cls, project: VideoProject, artifact_type: str, path: Path | str) -> None:
+    def mark_artifact_available(
+        cls, project: VideoProject, artifact_type: str, path: Path | str
+    ) -> None:
         """
         Mark an artifact as available for resumption.
 

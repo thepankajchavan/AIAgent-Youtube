@@ -1,16 +1,16 @@
 """Telegram bot initialization and configuration."""
 
+from loguru import logger
 from telegram import Update
 from telegram.ext import Application, CommandHandler, TypeHandler
-from loguru import logger
 
 from app.core.config import get_settings
-from app.telegram.middleware import auth_middleware, rate_limit_middleware
-from app.telegram.handlers.start import start_handler, help_handler
-from app.telegram.handlers.video import video_handler, video_long_handler
-from app.telegram.handlers.status import status_handler, list_handler
 from app.telegram.handlers.admin import cancel_handler, retry_handler
 from app.telegram.handlers.errors import error_handler
+from app.telegram.handlers.start import help_handler, start_handler
+from app.telegram.handlers.status import list_handler, status_handler
+from app.telegram.handlers.video import video_handler, video_long_handler
+from app.telegram.middleware import auth_middleware, rate_limit_middleware
 
 settings = get_settings()
 

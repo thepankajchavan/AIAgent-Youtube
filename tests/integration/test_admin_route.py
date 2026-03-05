@@ -1,7 +1,8 @@
 """Integration tests for admin routes (API key management)."""
 
-import pytest
 import uuid
+
+import pytest
 from httpx import AsyncClient
 
 from app.models.api_key import APIKey
@@ -14,11 +15,7 @@ class TestCreateAPIKey:
     async def test_create_api_key_success(self, client: AsyncClient, db_session):
         """Test creating a new API key."""
         response = await client.post(
-            "/api/v1/admin/keys",
-            json={
-                "name": "Test Key",
-                "rate_limit": 200
-            }
+            "/api/v1/admin/keys", json={"name": "Test Key", "rate_limit": 200}
         )
 
         assert response.status_code == 201
@@ -30,6 +27,7 @@ class TestCreateAPIKey:
 
         # Verify in database
         from sqlalchemy import select
+
         result = await db_session.execute(select(APIKey))
         keys = result.scalars().all()
         assert len(keys) == 1
@@ -37,10 +35,7 @@ class TestCreateAPIKey:
     @pytest.mark.asyncio
     async def test_create_api_key_default_rate_limit(self, client: AsyncClient):
         """Test default rate limit."""
-        response = await client.post(
-            "/api/v1/admin/keys",
-            json={"name": "Test Key"}
-        )
+        response = await client.post("/api/v1/admin/keys", json={"name": "Test Key"})
 
         assert response.status_code == 201
         assert response.json()["rate_limit"] == 100  # Default
@@ -49,10 +44,7 @@ class TestCreateAPIKey:
     async def test_create_api_key_validation(self, client: AsyncClient):
         """Test validation errors."""
         # Empty name
-        response = await client.post(
-            "/api/v1/admin/keys",
-            json={"name": ""}
-        )
+        response = await client.post("/api/v1/admin/keys", json={"name": ""})
         assert response.status_code == 422
 
 
@@ -62,10 +54,7 @@ class TestListAPIKeys:
     @pytest.mark.asyncio
     async def test_list_api_keys(self, client: AsyncClient, db_session):
         """Test listing API keys."""
-        keys = [
-            APIKey(key=f"ce_key{i}", name=f"Key {i}", rate_limit=100)
-            for i in range(3)
-        ]
+        keys = [APIKey(key=f"ce_key{i}", name=f"Key {i}", rate_limit=100) for i in range(3)]
         for k in keys:
             db_session.add(k)
         await db_session.commit()

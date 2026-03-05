@@ -57,8 +57,8 @@ jobs:
 
       - name: Run linting
         run: |
-          ruff check app/
-          black --check app/
+          ruff check app/ tests/
+          black --check app/ tests/
 
       - name: Run type checking
         run: |
@@ -68,7 +68,15 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/content_engine_test
+          DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@localhost:5432/content_engine_test
           REDIS_URL: redis://localhost:6379/0
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          CELERY_RESULT_BACKEND: redis://localhost:6379/1
+          OPENAI_API_KEY: sk-test-dummy-key-for-ci
+          ANTHROPIC_API_KEY: sk-ant-test-dummy-key
+          ELEVENLABS_API_KEY: test-elevenlabs-key
+          PEXELS_API_KEY: test-pexels-key
+          TELEGRAM_BOT_TOKEN: 123456:ABC-DEF-test-token
           ENCRYPTION_KEY: test-encryption-key-for-ci-only-32chars
         run: |
           pytest -v --cov=app --cov-report=xml --cov-report=term-missing
@@ -103,10 +111,10 @@ jobs:
           pip install black ruff mypy
 
       - name: Run Black
-        run: black --check .
+        run: black --check app/ tests/
 
       - name: Run Ruff
-        run: ruff check .
+        run: ruff check app/ tests/
 
       - name: Run MyPy
         run: mypy app/ --ignore-missing-imports

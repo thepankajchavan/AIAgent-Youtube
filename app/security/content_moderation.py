@@ -1,6 +1,5 @@
 """Content moderation using OpenAI Moderation API."""
 
-from openai import AsyncOpenAI
 from loguru import logger
 
 from app.core.config import get_settings
@@ -52,6 +51,7 @@ async def moderate_content(text: str) -> dict[str, any]:
 
     try:
         from app.services.llm_service import _get_openai
+
         client = _get_openai()
 
         response = await client.moderations.create(input=text)
@@ -64,8 +64,7 @@ async def moderate_content(text: str) -> dict[str, any]:
         if flagged:
             violated_categories = [cat for cat, is_flagged in categories.items() if is_flagged]
             logger.warning(
-                f"Content moderation flagged text. "
-                f"Categories: {', '.join(violated_categories)}"
+                f"Content moderation flagged text. " f"Categories: {', '.join(violated_categories)}"
             )
             logger.debug(f"Flagged text: {text[:100]}...")
 

@@ -10,9 +10,9 @@ Optimizations:
 
 import asyncio
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from concurrent.futures import ThreadPoolExecutor
 
 from loguru import logger
 
@@ -44,10 +44,7 @@ class GPUAcceleration:
         try:
             # Check if ffmpeg has nvenc encoder
             result = subprocess.run(
-                ["ffmpeg", "-encoders"],
-                capture_output=True,
-                text=True,
-                timeout=5
+                ["ffmpeg", "-encoders"], capture_output=True, text=True, timeout=5
             )
 
             cls._nvenc_available = "h264_nvenc" in result.stdout
@@ -78,10 +75,7 @@ class GPUAcceleration:
         try:
             # Check if ffmpeg has vaapi encoder
             result = subprocess.run(
-                ["ffmpeg", "-encoders"],
-                capture_output=True,
-                text=True,
-                timeout=5
+                ["ffmpeg", "-encoders"], capture_output=True, text=True, timeout=5
             )
 
             cls._vaapi_available = "h264_vaapi" in result.stdout
@@ -109,37 +103,43 @@ class GPUAcceleration:
         # Try NVENC first (fastest)
         if cls.detect_nvenc():
             return "h264_nvenc", [
-                "-c:v", "h264_nvenc",
-                "-preset", "fast",
-                "-rc", "vbr",
-                "-cq", "23",
-                "-b:v", "5M",
-                "-maxrate", "10M",
-                "-bufsize", "10M"
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "fast",
+                "-rc",
+                "vbr",
+                "-cq",
+                "23",
+                "-b:v",
+                "5M",
+                "-maxrate",
+                "10M",
+                "-bufsize",
+                "10M",
             ]
 
         # Try VA-API (Intel/AMD)
         if cls.detect_vaapi():
-            return "h264_vaapi", [
-                "-c:v", "h264_vaapi",
-                "-qp", "23"
-            ]
+            return "h264_vaapi", ["-c:v", "h264_vaapi", "-qp", "23"]
 
         # Fallback to CPU encoding (libx264)
         return "libx264", [
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "23",
-            "-profile:v", "high",
-            "-level", "4.0"
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-profile:v",
+            "high",
+            "-level",
+            "4.0",
         ]
 
 
 async def parallel_scale_clips(
-    input_clips: list[Path],
-    width: int,
-    height: int,
-    output_dir: Path
+    input_clips: list[Path], width: int, height: int, output_dir: Path
 ) -> list[Path]:
     """
     Scale multiple video clips in parallel using concurrent FFmpeg processes.
@@ -166,13 +166,16 @@ async def parallel_scale_clips(
 
         command = [
             "ffmpeg",
-            "-i", str(clip_path),
-            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                   f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+            "-i",
+            str(clip_path),
+            "-vf",
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
             *encoder_params,
-            "-pix_fmt", "yuv420p",
+            "-pix_fmt",
+            "yuv420p",
             "-y",
-            str(output_path)
+            str(output_path),
         ]
 
         # Run FFmpeg in thread pool
@@ -181,7 +184,7 @@ async def parallel_scale_clips(
             ffmpeg_executor,
             subprocess.run,
             command,
-            {"check": True, "capture_output": True, "text": True}
+            {"check": True, "capture_output": True, "text": True},
         )
 
         logger.debug(f"Scaled clip {index + 1}/{len(input_clips)}: {output_path.name}")
@@ -196,9 +199,7 @@ async def parallel_scale_clips(
 
 
 async def optimized_concatenate(
-    input_clips: list[Path],
-    output_path: Path,
-    use_gpu: bool = True
+    input_clips: list[Path], output_path: Path, use_gpu: bool = True
 ) -> Path:
     """
     Concatenate video clips with optimized encoding.
@@ -226,22 +227,27 @@ async def optimized_concatenate(
             f.write(f"file '{escaped_path}'\n")
 
     # Get optimal encoder
-    encoder, encoder_params = GPUAcceleration.get_encoder_params() if use_gpu else ("libx264", [
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "23"
-    ])
+    encoder, encoder_params = (
+        GPUAcceleration.get_encoder_params()
+        if use_gpu
+        else ("libx264", ["-c:v", "libx264", "-preset", "medium", "-crf", "23"])
+    )
 
     command = [
         "ffmpeg",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", str(concat_file),
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_file),
         *encoder_params,
-        "-c:a", "copy",  # Copy audio without re-encoding
-        "-movflags", "+faststart",  # Enable streaming
+        "-c:a",
+        "copy",  # Copy audio without re-encoding
+        "-movflags",
+        "+faststart",  # Enable streaming
         "-y",
-        str(output_path)
+        str(output_path),
     ]
 
     # Run concatenation
@@ -250,7 +256,7 @@ async def optimized_concatenate(
         ffmpeg_executor,
         subprocess.run,
         command,
-        {"check": True, "capture_output": True, "text": True}
+        {"check": True, "capture_output": True, "text": True},
     )
 
     # Clean up concat file
@@ -261,10 +267,7 @@ async def optimized_concatenate(
 
 
 async def optimized_audio_overlay(
-    video_path: Path,
-    audio_path: Path,
-    output_path: Path,
-    use_gpu: bool = True
+    video_path: Path, audio_path: Path, output_path: Path, use_gpu: bool = True
 ) -> Path:
     """
     Overlay audio on video with optimized encoding.
@@ -278,28 +281,35 @@ async def optimized_audio_overlay(
     Returns:
         Path to output video with audio
     """
-    logger.info(f"Adding audio overlay with optimization")
+    logger.info("Adding audio overlay with optimization")
 
     # Get optimal encoder
-    encoder, encoder_params = GPUAcceleration.get_encoder_params() if use_gpu else ("libx264", [
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "23"
-    ])
+    encoder, encoder_params = (
+        GPUAcceleration.get_encoder_params()
+        if use_gpu
+        else ("libx264", ["-c:v", "libx264", "-preset", "medium", "-crf", "23"])
+    )
 
     command = [
         "ffmpeg",
-        "-i", str(video_path),
-        "-i", str(audio_path),
-        "-map", "0:v:0",
-        "-map", "1:a:0",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
         *encoder_params,
-        "-c:a", "aac",
-        "-b:a", "192k",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
         "-shortest",  # Match shortest input duration
-        "-movflags", "+faststart",
+        "-movflags",
+        "+faststart",
         "-y",
-        str(output_path)
+        str(output_path),
     ]
 
     # Run audio overlay
@@ -308,7 +318,7 @@ async def optimized_audio_overlay(
         ffmpeg_executor,
         subprocess.run,
         command,
-        {"check": True, "capture_output": True, "text": True}
+        {"check": True, "capture_output": True, "text": True},
     )
 
     logger.info(f"Audio overlay complete: {output_path.name} (encoder: {encoder})")
@@ -326,15 +336,15 @@ def get_optimization_stats() -> dict[str, Any]:
         "gpu_acceleration": {
             "nvenc_available": GPUAcceleration.detect_nvenc(),
             "vaapi_available": GPUAcceleration.detect_vaapi(),
-            "encoder": GPUAcceleration.get_encoder_params()[0]
+            "encoder": GPUAcceleration.get_encoder_params()[0],
         },
         "parallel_processing": {
             "max_workers": ffmpeg_executor._max_workers,
-            "thread_name_prefix": ffmpeg_executor._thread_name_prefix
+            "thread_name_prefix": ffmpeg_executor._thread_name_prefix,
         },
         "encoding_settings": {
             "preset": "fast" if GPUAcceleration.detect_nvenc() else "medium",
             "format": "h264",
-            "pixel_format": "yuv420p"
-        }
+            "pixel_format": "yuv420p",
+        },
     }

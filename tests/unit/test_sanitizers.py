@@ -1,12 +1,11 @@
 """Unit tests for input sanitization and validation."""
 
 import pytest
-from pathlib import Path
 
 from app.security.sanitizers import (
+    sanitize_filename,
     sanitize_topic,
     validate_file_path,
-    sanitize_filename,
 )
 
 

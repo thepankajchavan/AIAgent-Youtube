@@ -10,13 +10,13 @@ import uuid
 from pathlib import Path
 
 import httpx
+from loguru import logger
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from loguru import logger
 
 from app.core.config import get_settings
 

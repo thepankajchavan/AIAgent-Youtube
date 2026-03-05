@@ -19,8 +19,6 @@ exclude = '''
 '''
 
 [tool.ruff]
-select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
-ignore = ["E501"]  # Line too long (handled by black)
 line-length = 100
 target-version = "py312"
 exclude = [
@@ -28,6 +26,19 @@ exclude = [
     ".venv",
     "__pycache__",
     "alembic",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # Line too long (handled by black)
+    "B008",   # Function call in default argument (FastAPI Depends/Query pattern)
+    "B904",   # raise ... from err in except (Celery retry pattern)
+    "B017",   # pytest.raises(Exception) is valid in tests
+    "E712",   # == True comparison (required for SQLAlchemy filters)
+    "SIM117", # Nested with statements (more readable for patch + pytest.raises)
+    "N806",   # Variable name in function should be lowercase (SessionLocal convention)
+    "B012",   # break inside finally (intentional single-iteration pattern)
 ]
 
 [tool.mypy]

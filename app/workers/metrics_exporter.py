@@ -9,9 +9,9 @@ Exports:
 """
 
 import time
-from celery import Celery
-from prometheus_client import start_http_server
+
 from loguru import logger
+from prometheus_client import start_http_server
 
 from app.core.celery_app import celery_app
 from app.core.metrics import (
@@ -26,7 +26,7 @@ def collect_celery_metrics():
     try:
         # Get worker stats
         stats = celery_app.control.inspect()
-        
+
         if stats is None:
             logger.warning("No Celery workers available for metrics collection")
             return
@@ -36,8 +36,8 @@ def collect_celery_metrics():
         if active_tasks_data:
             # Reset all gauges first
             active_celery_tasks._metrics.clear()
-            
-            for worker, tasks in active_tasks_data.items():
+
+            for _worker, tasks in active_tasks_data.items():
                 # Extract queue from task routing
                 for task in tasks:
                     queue = task.get("delivery_info", {}).get("routing_key", "default")
@@ -47,8 +47,8 @@ def collect_celery_metrics():
         reserved_tasks_data = stats.reserved()
         if reserved_tasks_data:
             celery_queue_depth._metrics.clear()
-            
-            for worker, tasks in reserved_tasks_data.items():
+
+            for _worker, tasks in reserved_tasks_data.items():
                 for task in tasks:
                     queue = task.get("delivery_info", {}).get("routing_key", "default")
                     celery_queue_depth.labels(queue=queue).inc()
@@ -57,8 +57,8 @@ def collect_celery_metrics():
         registered = stats.registered()
         if registered:
             celery_worker_online._metrics.clear()
-            
-            for worker_name in registered.keys():
+
+            for worker_name in registered:
                 celery_worker_online.labels(worker_name=worker_name).set(1)
 
         logger.debug("Celery metrics collected successfully")
@@ -70,7 +70,7 @@ def collect_celery_metrics():
 def run_metrics_exporter(port: int = 9090, interval: int = 15):
     """
     Start Prometheus HTTP server and periodically collect Celery metrics.
-    
+
     Args:
         port: Port to expose Prometheus metrics
         interval: Collection interval in seconds

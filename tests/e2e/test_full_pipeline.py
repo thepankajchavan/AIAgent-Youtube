@@ -4,12 +4,12 @@ These tests require a running database and Redis.
 Skipped by default when running unit tests only.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock
-from pathlib import Path
 
-from app.models.video import VideoProject, VideoStatus
+from app.models.video import VideoProject
 
 
 @pytest.mark.e2e
@@ -17,9 +17,7 @@ class TestFullPipelineE2E:
     """End-to-end test of complete pipeline."""
 
     @pytest.mark.asyncio
-    async def test_complete_pipeline_flow(
-        self, client: AsyncClient, db_session, mocker, tmp_path
-    ):
+    async def test_complete_pipeline_flow(self, client: AsyncClient, db_session, mocker, tmp_path):
         """Test complete pipeline from API request to database updates."""
 
         # Mock external services
@@ -29,27 +27,19 @@ class TestFullPipelineE2E:
             "tags": ["space"],
             "description": "Test",
         }
-        mocker.patch(
-            "app.services.llm_service.generate_script", return_value=mock_script
-        )
+        mocker.patch("app.services.llm_service.generate_script", return_value=mock_script)
 
         audio_path = tmp_path / "audio.mp3"
         audio_path.write_bytes(b"audio")
-        mocker.patch(
-            "app.services.tts_service.generate_speech", return_value=audio_path
-        )
+        mocker.patch("app.services.tts_service.generate_speech", return_value=audio_path)
 
         video_paths = [tmp_path / "video.mp4"]
         video_paths[0].write_bytes(b"video")
-        mocker.patch(
-            "app.services.visual_service.fetch_clips", return_value=video_paths
-        )
+        mocker.patch("app.services.visual_service.fetch_clips", return_value=video_paths)
 
         final_video = tmp_path / "final.mp4"
         final_video.write_bytes(b"final")
-        mocker.patch(
-            "app.services.media_service.assemble_video", return_value=final_video
-        )
+        mocker.patch("app.services.media_service.assemble_video", return_value=final_video)
 
         mocker.patch(
             "app.services.youtube_service.upload_video",

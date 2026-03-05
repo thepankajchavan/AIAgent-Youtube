@@ -9,10 +9,10 @@ from loguru import logger
 from redis import Redis
 from sqlalchemy import text
 
-from app.core.config import get_settings
-from app.core.celery_app import celery_app
-from app.core.database import async_session_factory
 from app.api.schemas import HealthResponse, TaskStatusResponse
+from app.core.celery_app import celery_app
+from app.core.config import get_settings
+from app.core.database import async_session_factory
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 settings = get_settings()
@@ -108,18 +108,19 @@ async def revoke_task(task_id: str, terminate: bool = False) -> dict:
 @router.get(
     "/circuit-breakers",
     summary="Get circuit breaker states",
-    description="Returns the current state of all external API circuit breakers."
+    description="Returns the current state of all external API circuit breakers.",
 )
 async def get_circuit_breaker_states() -> dict:
     """Get current state of all circuit breakers."""
     from app.core.circuit_breaker import get_circuit_breaker_states
+
     return get_circuit_breaker_states()
 
 
 @router.post(
     "/circuit-breakers/{service}/reset",
     summary="Reset circuit breaker",
-    description="Manually reset a circuit breaker for a specific service."
+    description="Manually reset a circuit breaker for a specific service.",
 )
 async def reset_circuit_breaker(service: str) -> dict:
     """Reset a circuit breaker."""
@@ -130,16 +131,20 @@ async def reset_circuit_breaker(service: str) -> dict:
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Circuit breaker for service '{service}' not found."
+            detail=f"Circuit breaker for service '{service}' not found.",
         )
 
-    return {"service": service, "status": "reset", "message": f"Circuit breaker for {service} has been reset"}
+    return {
+        "service": service,
+        "status": "reset",
+        "message": f"Circuit breaker for {service} has been reset",
+    }
 
 
 @router.get(
     "/queue-depth",
     summary="Get queue depth",
-    description="Returns the current depth of Celery task queues and backpressure status."
+    description="Returns the current depth of Celery task queues and backpressure status.",
 )
 async def get_queue_depth() -> dict:
     """Get current queue depth and backpressure status."""
@@ -152,43 +157,42 @@ async def get_queue_depth() -> dict:
         "max_depth": QueueBackpressure.MAX_QUEUE_DEPTH,
         "can_accept_new": can_accept,
         "backpressure_active": not can_accept,
-        "utilization_percent": round((current_depth / QueueBackpressure.MAX_QUEUE_DEPTH) * 100, 2)
+        "utilization_percent": round((current_depth / QueueBackpressure.MAX_QUEUE_DEPTH) * 100, 2),
     }
 
 
 @router.get(
     "/cache/stats",
     summary="Get cache statistics",
-    description="Returns cache usage statistics including memory usage and key counts."
+    description="Returns cache usage statistics including memory usage and key counts.",
 )
 async def get_cache_stats() -> dict:
     """Get cache statistics."""
     from app.services.cache_helpers import get_cache_statistics
+
     return await get_cache_statistics()
 
 
 @router.post(
     "/cache/invalidate",
     summary="Invalidate all caches",
-    description="Clear all application caches. Use with caution in production."
+    description="Clear all application caches. Use with caution in production.",
 )
 async def invalidate_caches() -> dict:
     """Invalidate all caches."""
     from app.services.cache_helpers import invalidate_all_caches
+
     results = await invalidate_all_caches()
-    return {
-        "status": "success",
-        "message": "All caches invalidated",
-        "keys_deleted": results
-    }
+    return {"status": "success", "message": "All caches invalidated", "keys_deleted": results}
 
 
 @router.get(
     "/optimization/media",
     summary="Get media optimization info",
-    description="Returns information about media pipeline optimizations (GPU acceleration, parallel processing)."
+    description="Returns information about media pipeline optimizations (GPU acceleration, parallel processing).",
 )
 async def get_media_optimization_info() -> dict:
     """Get media optimization information."""
     from app.services.media_optimization import get_optimization_stats
+
     return get_optimization_stats()

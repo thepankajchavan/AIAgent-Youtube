@@ -1,18 +1,18 @@
 """API key authentication middleware."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from loguru import logger
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.models.api_key import APIKey
-from app.core.database import async_session_factory
 from app.core.config import get_settings
+from app.core.database import async_session_factory
+from app.models.api_key import APIKey
 
 settings = get_settings()
 
@@ -55,7 +55,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 content={
                     "detail": "API key required. Provide via X-API-Key header or Authorization: Bearer token."
-                }
+                },
             )
 
         # Validate API key
@@ -89,10 +89,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return None
 
     async def _validate_api_key(
-        self,
-        session: AsyncSession,
-        api_key: str,
-        request: Request
+        self, session: AsyncSession, api_key: str, request: Request
     ) -> JSONResponse | None:
         """
         Validate API key against database.
@@ -102,38 +99,27 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             - JSONResponse with error if validation fails
         """
         # Fetch API key from database
-        result = await session.execute(
-            select(APIKey).where(APIKey.key == api_key)
-        )
+        result = await session.execute(select(APIKey).where(APIKey.key == api_key))
         key_obj = result.scalar_one_or_none()
 
         if not key_obj:
             logger.warning(f"Invalid API key attempted from {request.client.host}")
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid API key."}
-            )
+            return JSONResponse(status_code=401, content={"detail": "Invalid API key."})
 
         # Check if key is active
         if not key_obj.is_active:
             logger.warning(f"Inactive API key {key_obj.name} attempted from {request.client.host}")
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "API key is inactive."}
-            )
+            return JSONResponse(status_code=401, content={"detail": "API key is inactive."})
 
         # Check rate limiting
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Reset counter if hour has passed
         if now >= key_obj.rate_limit_reset_at:
             await session.execute(
                 update(APIKey)
                 .where(APIKey.id == key_obj.id)
-                .values(
-                    requests_this_hour=0,
-                    rate_limit_reset_at=now + timedelta(hours=1)
-                )
+                .values(requests_this_hour=0, rate_limit_reset_at=now + timedelta(hours=1))
             )
             await session.commit()
             key_obj.requests_this_hour = 0
@@ -149,9 +135,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 status_code=429,
                 content={
                     "detail": f"Rate limit exceeded. Limit: {key_obj.rate_limit} requests/hour. "
-                              f"Resets in {reset_in} seconds."
+                    f"Resets in {reset_in} seconds."
                 },
-                headers={"Retry-After": str(reset_in)}
+                headers={"Retry-After": str(reset_in)},
             )
 
         # Update usage statistics
@@ -161,7 +147,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             .values(
                 requests_this_hour=APIKey.requests_this_hour + 1,
                 total_requests=APIKey.total_requests + 1,
-                last_used_at=now
+                last_used_at=now,
             )
         )
         await session.commit()

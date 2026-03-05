@@ -1,17 +1,17 @@
 """Unit tests for encryption utilities."""
 
 import pytest
-from pathlib import Path
-from cryptography.fernet import InvalidToken
 
 from app.core.encryption import (
-    encrypt_string,
-    decrypt_string,
-    encrypt_json,
-    decrypt_json,
-    encrypt_file,
     decrypt_file,
+    decrypt_json,
+    decrypt_string,
+    encrypt_file,
+    encrypt_json,
+    encrypt_string,
     generate_key,
+)
+from app.core.encryption import (
     settings as encryption_settings,
 )
 
@@ -19,8 +19,10 @@ from app.core.encryption import (
 @pytest.fixture
 def set_encryption_key(monkeypatch):
     """Set a valid encryption key on the cached settings object."""
+
     def _set(key: str):
         monkeypatch.setattr(encryption_settings, "encryption_key", key)
+
     return _set
 
 
@@ -100,11 +102,7 @@ class TestJSONEncryption:
         test_key = generate_key()
         set_encryption_key(test_key)
 
-        data = {
-            "token": "secret_token",
-            "user_id": 12345,
-            "nested": {"key": "value"}
-        }
+        data = {"token": "secret_token", "user_id": 12345, "nested": {"key": "value"}}
 
         encrypted = encrypt_json(data)
         decrypted = decrypt_json(encrypted)
@@ -131,7 +129,7 @@ class TestJSONEncryption:
             "nested": {"deep": {"value": "test"}},
             "unicode": "测试",
             "bool": True,
-            "null": None
+            "null": None,
         }
 
         encrypted = encrypt_json(data)

@@ -1,8 +1,9 @@
 """Event emission for status updates via Redis pub/sub."""
 
 import json
-from redis import Redis
+
 from loguru import logger
+from redis import Redis
 
 from app.core.config import get_settings
 

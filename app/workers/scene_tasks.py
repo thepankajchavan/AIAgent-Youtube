@@ -141,7 +141,10 @@ def split_scenes_task(
                 )
 
             if self.request.retries >= self.max_retries:
-                _mark_project_failed(project_id, f"Scene splitting failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id,
+                    f"Scene splitting failed after {self.max_retries + 1} attempts: {exc}",
+                )
                 raise
             raise self.retry(exc=exc)
 
@@ -156,7 +159,7 @@ def split_scenes_task(
     max_retries=2,
     default_retry_delay=60,
     acks_late=True,
-    time_limit=900,       # 15 min hard limit (AI generation can be slow)
+    time_limit=900,  # 15 min hard limit (AI generation can be slow)
     soft_time_limit=840,  # 14 min soft limit
 )
 def generate_visuals_task(
@@ -256,6 +259,9 @@ def generate_visuals_task(
                 )
 
             if self.request.retries >= self.max_retries:
-                _mark_project_failed(project_id, f"Visual generation failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id,
+                    f"Visual generation failed after {self.max_retries + 1} attempts: {exc}",
+                )
                 raise
             raise self.retry(exc=exc)

@@ -2,8 +2,8 @@
 
 import re
 from pathlib import Path
-from loguru import logger
 
+from loguru import logger
 
 # ── Prompt Injection Detection Patterns ──────────────────────────
 
@@ -15,19 +15,15 @@ PROMPT_INJECTION_PATTERNS = [
     r"(?i)(act|behave|pretend)\s+as\s+(if|a|an)\s+",
     r"(?i)new\s+(instructions?|rules?|context|role|personality)",
     r"(?i)override\s+(instructions?|rules?|settings?)",
-
     # XML/HTML-like instruction tags
     r"<\s*(system|assistant|user|instruction|prompt|role)\s*>",
     r"\[INST\]|\[\/INST\]",
     r"\{\s*(system|assistant|user)\s*:",
-
     # JSON/structured injection
     r'"(role|content|system|assistant)"\s*:\s*"',
-
     # Jailbreak patterns
     r"(?i)(developer\s+mode|god\s+mode|admin\s+mode|debug\s+mode)",
     r"(?i)(jailbreak|unrestrict|bypass|escape)\s+(mode|filter|safety)",
-
     # Prompt leaking attempts
     r"(?i)(show|reveal|display|print|output)\s+(your|the)\s+(prompt|instructions?|rules?|system\s+message)",
 ]
@@ -131,9 +127,7 @@ def validate_file_path(file_path: Path, allowed_directory: Path) -> Path:
             f"Path traversal attempt detected: {file_path} "
             f"(resolved to {resolved_path}, allowed: {resolved_allowed})"
         )
-        raise ValueError(
-            f"Path traversal detected. Path must be within {allowed_directory}"
-        )
+        raise ValueError(f"Path traversal detected. Path must be within {allowed_directory}")
 
     logger.debug(f"Validated path: {resolved_path}")
     return resolved_path
@@ -169,26 +163,45 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     filename = "".join(char for char in filename if ord(char) >= 32 and char != "\x7f")
 
     # Whitelist safe characters (alphanumeric + basic punctuation, no spaces to avoid issues)
-    safe_chars = re.compile(r'[^a-zA-Z0-9._-]')
-    filename = safe_chars.sub('_', filename)
+    safe_chars = re.compile(r"[^a-zA-Z0-9._-]")
+    filename = safe_chars.sub("_", filename)
 
     # Remove leading/trailing dots and underscores
-    filename = filename.strip('._')
+    filename = filename.strip("._")
 
     # Check length
     if len(filename) > max_length:
         # Preserve extension
-        name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+        name, ext = filename.rsplit(".", 1) if "." in filename else (filename, "")
         max_name_len = max_length - len(ext) - 1 if ext else max_length
         filename = f"{name[:max_name_len]}.{ext}" if ext else name[:max_length]
 
     # Check for reserved names (Windows)
     reserved_names = {
-        'CON', 'PRN', 'AUX', 'NUL',
-        'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
-        'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
     }
-    base_name = filename.rsplit('.', 1)[0].upper() if '.' in filename else filename.upper()
+    base_name = filename.rsplit(".", 1)[0].upper() if "." in filename else filename.upper()
     if base_name in reserved_names:
         filename = f"file_{filename}"
 

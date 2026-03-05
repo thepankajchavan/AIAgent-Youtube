@@ -1,13 +1,13 @@
 """Status checking command handlers."""
 
 import httpx
+from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
-from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.workers.db import get_sync_db
 from app.models.video import VideoProject
+from app.workers.db import get_sync_db
 
 settings = get_settings()
 
@@ -18,7 +18,7 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Usage: `/status <project_id>`\n\n"
             "Example: `/status 123e4567-e89b-12d3-a456-426614174000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
 
@@ -28,8 +28,7 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{settings.api_base_url}/api/v1/projects/{project_id}",
-                timeout=5.0
+                f"{settings.api_base_url}/api/v1/projects/{project_id}", timeout=5.0
             )
             response.raise_for_status()
             project = response.json()
@@ -86,7 +85,10 @@ async def list_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         projects = db.execute(stmt).scalars().all()
 
     if not projects:
-        await update.message.reply_text("You have no projects yet.\n\nUse `/video <topic>` to create one!", parse_mode="Markdown")
+        await update.message.reply_text(
+            "You have no projects yet.\n\nUse `/video <topic>` to create one!",
+            parse_mode="Markdown",
+        )
         return
 
     # Format list
@@ -106,6 +108,6 @@ async def list_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   {p.status.value} • {p.created_at.strftime('%m/%d %H:%M')}\n"
         )
 
-    lines.append(f"\nUse `/status <id>` to see details.")
+    lines.append("\nUse `/status <id>` to see details.")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")

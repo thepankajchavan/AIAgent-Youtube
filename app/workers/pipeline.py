@@ -27,9 +27,9 @@ from celery import chain, chord, group
 from loguru import logger
 
 from app.core.celery_app import celery_app
-from app.workers.script_tasks import generate_script_task
-from app.workers.media_tasks import generate_audio_task, fetch_visuals_task
 from app.workers.assembly_tasks import assemble_video_task
+from app.workers.media_tasks import fetch_visuals_task, generate_audio_task
+from app.workers.script_tasks import generate_script_task
 from app.workers.upload_tasks import upload_to_youtube_task
 
 
@@ -89,8 +89,8 @@ def build_pipeline(
     else:
         # ── AI VIDEO PATH — scene splitting + hybrid visuals ─
         from app.workers.scene_tasks import (
-            split_scenes_task,
             generate_visuals_task,
+            split_scenes_task,
         )
 
         step_scene_split = split_scenes_task.s()

@@ -1,8 +1,8 @@
 """Global error handler for unhandled exceptions."""
 
+from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
-from loguru import logger
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -11,6 +11,5 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update and update.effective_message:
         await update.effective_message.reply_text(
-            "❌ An error occurred.\n\n"
-            "Please try again or use `/help` for usage instructions."
+            "❌ An error occurred.\n\n" "Please try again or use `/help` for usage instructions."
         )

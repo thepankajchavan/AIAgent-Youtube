@@ -8,15 +8,15 @@ Tasks that fail after all retry attempts are moved to the DLQ for:
 - User notification
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
+
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
-from app.models.video_project import VideoProject, ProjectStatus
 from app.core.redis_client import get_redis_client
+from app.models.video_project import ProjectStatus, VideoProject
 
 
 class DeadLetterQueue:
@@ -35,7 +35,7 @@ class DeadLetterQueue:
         kwargs: dict,
         exception: Exception,
         traceback_str: str,
-        project_id: int | None = None
+        project_id: int | None = None,
     ) -> None:
         """
         Add a permanently failed task to the DLQ.
@@ -61,9 +61,9 @@ class DeadLetterQueue:
             "exception_message": str(exception),
             "traceback": traceback_str,
             "project_id": project_id,
-            "failed_at": datetime.now(timezone.utc).isoformat(),
+            "failed_at": datetime.now(UTC).isoformat(),
             "retry_count": 0,
-            "status": "failed"
+            "status": "failed",
         }
 
         # Store task details
@@ -162,10 +162,7 @@ class DeadLetterQueue:
             return None
 
         # Convert bytes to strings
-        return {
-            k.decode(): v.decode() if isinstance(v, bytes) else v
-            for k, v in task_data.items()
-        }
+        return {k.decode(): v.decode() if isinstance(v, bytes) else v for k, v in task_data.items()}
 
     @classmethod
     async def remove_task(cls, task_id: str) -> bool:
@@ -208,7 +205,7 @@ class DeadLetterQueue:
 
         await redis.hset(task_key, "status", "retried")
         await redis.hincrby(task_key, "retry_count", 1)
-        await redis.hset(task_key, "retried_at", datetime.now(timezone.utc).isoformat())
+        await redis.hset(task_key, "retried_at", datetime.now(UTC).isoformat())
 
         logger.info(f"Task {task_id} marked as retried in DLQ")
 
@@ -242,5 +239,5 @@ class DeadLetterQueue:
             "retried_tasks": retried_count,
             "exception_types": exception_types,
             "oldest_task": tasks[-1].get("failed_at") if tasks else None,
-            "newest_task": tasks[0].get("failed_at") if tasks else None
+            "newest_task": tasks[0].get("failed_at") if tasks else None,
         }

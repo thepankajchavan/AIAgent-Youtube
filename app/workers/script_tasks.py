@@ -134,6 +134,9 @@ def generate_script_task(
             if self.request.retries >= self.max_retries:
                 # Final failure — commit FAILED in a SEPARATE session
                 # so the rollback of the main session doesn't undo it
-                _mark_project_failed(project_id, f"Script generation failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id,
+                    f"Script generation failed after {self.max_retries + 1} attempts: {exc}",
+                )
                 raise  # Don't retry, just propagate
             raise self.retry(exc=exc)

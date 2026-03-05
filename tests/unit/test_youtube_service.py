@@ -1,9 +1,9 @@
 """Unit tests for YouTube service with mocked Google API."""
 
-import pytest
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 from app.services.youtube_service import (
     _read_token,
@@ -26,7 +26,7 @@ class TestTokenReadWrite:
         # Mock decrypt_string
         mock_decrypt = mocker.patch(
             "app.services.youtube_service.decrypt_string",
-            return_value='{"token": "decrypted_value"}'
+            return_value='{"token": "decrypted_value"}',
         )
 
         result = _read_token(token_path)
@@ -61,7 +61,7 @@ class TestTokenReadWrite:
         # Mock decrypt_string to raise exception
         mocker.patch(
             "app.services.youtube_service.decrypt_string",
-            side_effect=ValueError("Decryption failed")
+            side_effect=ValueError("Decryption failed"),
         )
 
         with pytest.raises(ValueError, match="Failed to decrypt YouTube token"):
@@ -75,8 +75,7 @@ class TestTokenReadWrite:
 
         # Mock encrypt_string
         mocker.patch(
-            "app.services.youtube_service.encrypt_string",
-            return_value="encrypted_token_data"
+            "app.services.youtube_service.encrypt_string", return_value="encrypted_token_data"
         )
 
         _write_token(token_path, token_json)
@@ -98,8 +97,7 @@ class TestTokenReadWrite:
 
         # Mock encryption
         mocker.patch(
-            "app.services.youtube_service.encrypt_string",
-            return_value="new_encrypted_data"
+            "app.services.youtube_service.encrypt_string", return_value="new_encrypted_data"
         )
 
         _write_token(token_path, '{"new": "token"}')
@@ -116,7 +114,7 @@ class TestTokenReadWrite:
         # Mock encrypt_string to raise ValueError (no encryption key)
         mocker.patch(
             "app.services.youtube_service.encrypt_string",
-            side_effect=ValueError("ENCRYPTION_KEY not configured")
+            side_effect=ValueError("ENCRYPTION_KEY not configured"),
         )
 
         _write_token(token_path, token_json)
@@ -145,8 +143,7 @@ class TestVideoUpload:
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
         # Upload video
@@ -156,7 +153,7 @@ class TestVideoUpload:
             description="Test description",
             tags=["test", "video"],
             category="education",
-            privacy_status="private"
+            privacy_status="private",
         )
 
         # Verify result
@@ -181,8 +178,7 @@ class TestVideoUpload:
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
         upload_video(
@@ -190,7 +186,7 @@ class TestVideoUpload:
             title="Amazing Facts",
             description="Test",
             tags=["facts"],
-            is_short=True
+            is_short=True,
         )
 
         call_kwargs = mock_youtube.videos().insert.call_args.kwargs
@@ -210,8 +206,7 @@ class TestVideoUpload:
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
         upload_video(
@@ -219,7 +214,7 @@ class TestVideoUpload:
             title="Documentary",
             description="Test",
             tags=["documentary"],
-            is_short=False
+            is_short=False,
         )
 
         call_kwargs = mock_youtube.videos().insert.call_args.kwargs
@@ -241,8 +236,7 @@ class TestVideoUpload:
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
         long_title = "A" * 150  # 150 chars
@@ -252,7 +246,7 @@ class TestVideoUpload:
             title=long_title,
             description="Test",
             tags=["test"],
-            is_short=False
+            is_short=False,
         )
 
         call_kwargs = mock_youtube.videos().insert.call_args.kwargs
@@ -272,8 +266,7 @@ class TestVideoUpload:
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
         # Test different categories
@@ -282,7 +275,7 @@ class TestVideoUpload:
             "education": "27",
             "science": "28",
             "gaming": "20",
-            "unknown_category": "24"  # Default fallback
+            "unknown_category": "24",  # Default fallback
         }
 
         for category_name, expected_id in categories_map.items():
@@ -292,7 +285,7 @@ class TestVideoUpload:
                 description="Test",
                 tags=["test"],
                 category=category_name,
-                is_short=False
+                is_short=False,
             )
 
             call_kwargs = mock_youtube.videos().insert.call_args.kwargs
@@ -301,12 +294,10 @@ class TestVideoUpload:
     def test_upload_video_file_not_found(self, mocker):
         """Test that missing video file raises error (wrapped by tenacity after retries)."""
         from tenacity import RetryError
+
         with pytest.raises((FileNotFoundError, RetryError)):
             upload_video(
-                file_path="/nonexistent/video.mp4",
-                title="Test",
-                description="Test",
-                tags=["test"]
+                file_path="/nonexistent/video.mp4", title="Test", description="Test", tags=["test"]
             )
 
     def test_upload_video_with_progress_logging(self, mocker, tmp_path):
@@ -324,25 +315,22 @@ class TestVideoUpload:
         mock_status_2 = MagicMock()
         mock_status_2.progress.return_value = 0.66
 
-        mock_request.next_chunk = MagicMock(side_effect=[
-            (mock_status_1, None),  # First chunk
-            (mock_status_2, None),  # Second chunk
-            (None, {"id": "abc123"})  # Final response
-        ])
+        mock_request.next_chunk = MagicMock(
+            side_effect=[
+                (mock_status_1, None),  # First chunk
+                (mock_status_2, None),  # Second chunk
+                (None, {"id": "abc123"}),  # Final response
+            ]
+        )
 
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
         result = upload_video(
-            file_path=video_path,
-            title="Test",
-            description="Test",
-            tags=["test"],
-            is_short=False
+            file_path=video_path, title="Test", description="Test", tags=["test"], is_short=False
         )
 
         # Verify all chunks were processed
@@ -360,16 +348,10 @@ class TestVideoUpload:
         mock_youtube.videos().insert.return_value = mock_request
 
         mocker.patch(
-            "app.services.youtube_service._get_authenticated_service",
-            return_value=mock_youtube
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
         )
 
-        upload_video(
-            file_path=video_path,
-            title="Test",
-            description="Test",
-            tags=["test"]
-        )
+        upload_video(file_path=video_path, title="Test", description="Test", tags=["test"])
 
         call_kwargs = mock_youtube.videos().insert.call_args.kwargs
         assert call_kwargs["body"]["status"]["selfDeclaredMadeForKids"] is False
@@ -395,12 +377,11 @@ class TestAuthenticatedService:
             "token_uri": "https://oauth2.googleapis.com/token",
             "client_id": "test_client_id",
             "client_secret": "test_client_secret",
-            "scopes": ["https://www.googleapis.com/auth/youtube.upload"]
+            "scopes": ["https://www.googleapis.com/auth/youtube.upload"],
         }
 
         mocker.patch(
-            "app.services.youtube_service._read_token",
-            return_value=json.dumps(valid_token)
+            "app.services.youtube_service._read_token", return_value=json.dumps(valid_token)
         )
 
         # Mock Credentials
@@ -411,15 +392,12 @@ class TestAuthenticatedService:
 
         mocker.patch(
             "app.services.youtube_service.Credentials.from_authorized_user_info",
-            return_value=mock_creds
+            return_value=mock_creds,
         )
 
         # Mock build
         mock_youtube = MagicMock()
-        mocker.patch(
-            "app.services.youtube_service.build",
-            return_value=mock_youtube
-        )
+        mocker.patch("app.services.youtube_service.build", return_value=mock_youtube)
 
         result = _get_authenticated_service()
 
@@ -436,8 +414,7 @@ class TestAuthenticatedService:
         valid_token = {"token": "old_token", "refresh_token": "refresh"}
 
         mocker.patch(
-            "app.services.youtube_service._read_token",
-            return_value=json.dumps(valid_token)
+            "app.services.youtube_service._read_token", return_value=json.dumps(valid_token)
         )
 
         # Mock expired credentials
@@ -449,7 +426,7 @@ class TestAuthenticatedService:
 
         mocker.patch(
             "app.services.youtube_service.Credentials.from_authorized_user_info",
-            return_value=mock_creds
+            return_value=mock_creds,
         )
 
         # Mock refresh
@@ -462,7 +439,7 @@ class TestAuthenticatedService:
         mock_youtube = MagicMock()
         mocker.patch("app.services.youtube_service.build", return_value=mock_youtube)
 
-        result = _get_authenticated_service()
+        _get_authenticated_service()
 
         # Verify refresh was called
         mock_creds.refresh.assert_called_once()

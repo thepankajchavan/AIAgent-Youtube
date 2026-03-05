@@ -12,16 +12,16 @@ import uuid
 from pathlib import Path
 
 import httpx
+from loguru import logger
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from loguru import logger
 
-from app.core.config import get_settings
 from app.core.cache import cache_pexels_search, get_cached_pexels_search
+from app.core.config import get_settings
 
 settings = get_settings()
 
@@ -37,7 +37,8 @@ def _headers() -> dict[str, str]:
     wait=wait_exponential(multiplier=2, min=3, max=30),
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),
     before_sleep=lambda rs: logger.warning(
-        "Pexels search attempt {} failed, retrying …", rs.attempt_number,
+        "Pexels search attempt {} failed, retrying …",
+        rs.attempt_number,
     ),
 )
 async def search_videos(
@@ -102,14 +103,16 @@ async def search_videos(
         if best_file is None:
             continue
 
-        results.append({
-            "id": video["id"],
-            "url": video["url"],
-            "duration": duration,
-            "width": best_file["width"],
-            "height": best_file["height"],
-            "download_url": best_file["link"],
-        })
+        results.append(
+            {
+                "id": video["id"],
+                "url": video["url"],
+                "duration": duration,
+                "width": best_file["width"],
+                "height": best_file["height"],
+                "download_url": best_file["link"],
+            }
+        )
 
     logger.info("Pexels returned {} usable clips for '{}'", len(results), query)
 
@@ -119,9 +122,7 @@ async def search_videos(
     return results
 
 
-def _pick_best_file(
-    files: list[dict], orientation: str
-) -> dict | None:
+def _pick_best_file(files: list[dict], orientation: str) -> dict | None:
     """
     Select the best video file from Pexels file variants.
     Prefers HD resolution, correct aspect ratio, mp4 format.
@@ -140,9 +141,7 @@ def _pick_best_file(
         score = 0
 
         # Orientation match
-        if orientation == "portrait" and h > w:
-            score += 100
-        elif orientation == "landscape" and w > h:
+        if orientation == "portrait" and h > w or orientation == "landscape" and w > h:
             score += 100
 
         # Resolution preference (720p–1080p sweet spot)
@@ -264,13 +263,18 @@ async def create_placeholder_video(
 
     command = [
         "ffmpeg",
-        "-f", "lavfi",
-        "-i", f"color=c=black:s={resolution}:d={duration}",
-        "-vf", f"drawtext=text='Stock footage unavailable':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2",
-        "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=black:s={resolution}:d={duration}",
+        "-vf",
+        "drawtext=text='Stock footage unavailable':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
         "-y",
-        str(output_path)
+        str(output_path),
     ]
 
     try:

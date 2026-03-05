@@ -1,12 +1,13 @@
 """Middleware for authentication and rate limiting."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
+from loguru import logger
 from telegram import Update
 from telegram.ext import ApplicationHandlerStop, ContextTypes
-from loguru import logger
 
-from app.workers.db import get_sync_db
 from app.models.telegram_user import TelegramUser
+from app.workers.db import get_sync_db
 
 
 async def auth_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +76,7 @@ async def rate_limit_middleware(update: Update, context: ContextTypes.DEFAULT_TY
             return  # Admins bypass rate limits
 
         # Check if rate limit window expired
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if now >= user.rate_limit_reset_at:
             # Reset counter
             user.videos_this_hour = 0

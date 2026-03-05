@@ -1,7 +1,6 @@
 """Tests for Celery pipeline orchestration (build_pipeline + run_pipeline_task)."""
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.workers.pipeline import build_pipeline, run_pipeline_task
 

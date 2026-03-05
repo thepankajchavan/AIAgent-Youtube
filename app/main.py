@@ -1,11 +1,11 @@
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_settings
 from app.core.database import dispose_engine
@@ -19,7 +19,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
 
     # VALIDATION PHASE
-    from app.core.validation import validate_all, ConfigValidationError
+    from app.core.validation import ConfigValidationError, validate_all
+
     try:
         await validate_all()
     except ConfigValidationError as exc:
@@ -52,17 +53,22 @@ def create_app() -> FastAPI:
     # ── Security Headers Middleware ──────────────────────────
     # Add first so headers are always present
     from app.middleware.security_headers import SecurityHeadersMiddleware
+
     app.add_middleware(SecurityHeadersMiddleware)
 
     # ── Authentication Middleware ─────────────────────────────
     from app.middleware.auth import AuthenticationMiddleware
+
     app.add_middleware(AuthenticationMiddleware)
 
     # ── CORS Middleware ───────────────────────────────────────
     # Parse allowed origins from settings (comma-separated list)
     allowed_origins = (
-        ["*"] if settings.cors_allowed_origins == "*"
-        else [origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()]
+        ["*"]
+        if settings.cors_allowed_origins == "*"
+        else [
+            origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()
+        ]
     )
 
     app.add_middleware(
@@ -75,9 +81,9 @@ def create_app() -> FastAPI:
 
     # ── Error Handlers ────────────────────────────────────────
     from app.api.error_handlers import (
+        generic_exception_handler,
         http_exception_handler,
         validation_exception_handler,
-        generic_exception_handler,
     )
 
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -107,10 +113,10 @@ def create_app() -> FastAPI:
     logger.info("📊 Prometheus metrics exposed at /metrics")
 
     # ── Route registration ────────────────────────────────────
+    from app.api.routes.admin import router as admin_router
     from app.api.routes.pipeline import router as pipeline_router
     from app.api.routes.projects import router as projects_router
     from app.api.routes.system import router as system_router
-    from app.api.routes.admin import router as admin_router
 
     app.include_router(pipeline_router)
     app.include_router(projects_router)

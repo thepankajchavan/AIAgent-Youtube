@@ -14,49 +14,30 @@ Circuit Breaker States:
 - HALF_OPEN: Testing if service recovered
 """
 
-from typing import Any, Callable
 import asyncio
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
-from pybreaker import CircuitBreaker, CircuitBreakerError
 from loguru import logger
+from pybreaker import CircuitBreaker, CircuitBreakerError
 
 # ── Circuit Breakers for External Services ────────────────────
 
 # OpenAI circuit breaker - fail after 5 failures in 60 seconds, recover after 120 seconds
-openai_breaker = CircuitBreaker(
-    fail_max=5,
-    reset_timeout=120,
-    name="OpenAI API"
-)
+openai_breaker = CircuitBreaker(fail_max=5, reset_timeout=120, name="OpenAI API")
 
 # Anthropic circuit breaker
-anthropic_breaker = CircuitBreaker(
-    fail_max=5,
-    reset_timeout=120,
-    name="Anthropic API"
-)
+anthropic_breaker = CircuitBreaker(fail_max=5, reset_timeout=120, name="Anthropic API")
 
 # ElevenLabs circuit breaker
-elevenlabs_breaker = CircuitBreaker(
-    fail_max=3,
-    reset_timeout=60,
-    name="ElevenLabs API"
-)
+elevenlabs_breaker = CircuitBreaker(fail_max=3, reset_timeout=60, name="ElevenLabs API")
 
 # Pexels circuit breaker
-pexels_breaker = CircuitBreaker(
-    fail_max=5,
-    reset_timeout=60,
-    name="Pexels API"
-)
+pexels_breaker = CircuitBreaker(fail_max=5, reset_timeout=60, name="Pexels API")
 
 # YouTube circuit breaker
-youtube_breaker = CircuitBreaker(
-    fail_max=3,
-    reset_timeout=120,
-    name="YouTube API"
-)
+youtube_breaker = CircuitBreaker(fail_max=3, reset_timeout=120, name="YouTube API")
 
 
 # ── Circuit Breaker Decorators ─────────────────────────────────
@@ -74,6 +55,7 @@ def with_openai_breaker(fallback_to_anthropic: bool = True):
     Returns:
         Decorated function
     """
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -87,32 +69,41 @@ def with_openai_breaker(fallback_to_anthropic: bool = True):
                     logger.info("Falling back to Anthropic API")
                     # Import here to avoid circular dependency
                     from app.services.llm_service import generate_script_anthropic
+
                     topic = kwargs.get("topic") or args[0] if args else None
                     if topic:
                         return await generate_script_anthropic(topic)
 
                 raise
+
         return wrapper
+
     return decorator
 
 
 def with_anthropic_breaker():
     """Decorator to wrap Anthropic calls with circuit breaker."""
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             return await anthropic_breaker.call_async(func, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 def with_elevenlabs_breaker():
     """Decorator to wrap ElevenLabs calls with circuit breaker."""
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             return await elevenlabs_breaker.call_async(func, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -128,6 +119,7 @@ def with_pexels_breaker(fallback_to_placeholder: bool = True):
     Returns:
         Decorated function
     """
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -140,22 +132,28 @@ def with_pexels_breaker(fallback_to_placeholder: bool = True):
                     logger.info("Falling back to placeholder videos")
                     # Use placeholder video (black screen with text)
                     from app.services.visual_service import create_placeholder_video
+
                     query = kwargs.get("query") or args[0] if args else "video content"
                     duration = kwargs.get("duration", 30)
                     return await create_placeholder_video(query, duration)
 
                 raise
+
         return wrapper
+
     return decorator
 
 
 def with_youtube_breaker():
     """Decorator to wrap YouTube API calls with circuit breaker."""
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             return await youtube_breaker.call_async(func, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -178,7 +176,6 @@ class QueueBackpressure:
         Returns:
             Total number of tasks waiting in queues
         """
-        import asyncio
         from app.core.celery_app import celery_app
 
         def _sync_inspect() -> int:
@@ -227,7 +224,7 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
         "anthropic": anthropic_breaker,
         "elevenlabs": elevenlabs_breaker,
         "pexels": pexels_breaker,
-        "youtube": youtube_breaker
+        "youtube": youtube_breaker,
     }
 
     states = {}
@@ -237,7 +234,7 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
             "fail_counter": breaker.fail_counter,
             "fail_max": breaker.fail_max,
             "reset_timeout": breaker.reset_timeout,
-            "last_failure": str(breaker.last_failure_time) if breaker.last_failure_time else None
+            "last_failure": str(breaker.last_failure_time) if breaker.last_failure_time else None,
         }
 
     return states
@@ -258,7 +255,7 @@ def reset_circuit_breaker(service: str) -> bool:
         "anthropic": anthropic_breaker,
         "elevenlabs": elevenlabs_breaker,
         "pexels": pexels_breaker,
-        "youtube": youtube_breaker
+        "youtube": youtube_breaker,
     }
 
     breaker = breakers.get(service.lower())

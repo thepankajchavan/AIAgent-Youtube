@@ -1,8 +1,7 @@
 """Unit tests for pipeline orchestration (build_pipeline)."""
 
-import pytest
-from celery import chain, chord
-from celery.canvas import _chain, Signature
+from celery import chord
+from celery.canvas import _chain
 
 from app.workers.pipeline import build_pipeline
 

@@ -72,7 +72,9 @@
       "Bash(./venv/Scripts/python.exe:*)",
       "Bash(./venv/Scripts/alembic.exe current:*)",
       "Bash(./venv/Scripts/alembic.exe heads:*)",
-      "Bash(./venv/Scripts/alembic.exe upgrade:*)"
+      "Bash(./venv/Scripts/alembic.exe upgrade:*)",
+      "Bash(gh run list:*)",
+      "Bash(black:*)"
     ]
   }
 }

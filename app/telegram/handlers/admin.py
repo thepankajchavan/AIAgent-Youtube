@@ -12,10 +12,7 @@ settings = get_settings()
 async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /cancel <project_id> command."""
     if not update.message or not context.args:
-        await update.message.reply_text(
-            "Usage: `/cancel <project_id>`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("Usage: `/cancel <project_id>`", parse_mode="Markdown")
         return
 
     project_id = context.args[0]
@@ -24,8 +21,7 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with httpx.AsyncClient() as client:
             # Get project to find celery_task_id
             response = await client.get(
-                f"{settings.api_base_url}/api/v1/projects/{project_id}",
-                timeout=5.0
+                f"{settings.api_base_url}/api/v1/projects/{project_id}", timeout=5.0
             )
             response.raise_for_status()
             project = response.json()
@@ -39,13 +35,12 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response = await client.post(
                 f"{settings.api_base_url}/api/v1/system/tasks/{celery_task_id}/revoke",
                 params={"terminate": True},
-                timeout=5.0
+                timeout=5.0,
             )
             response.raise_for_status()
 
             await update.message.reply_text(
-                f"✅ Task cancelled for project `{project_id}`",
-                parse_mode="Markdown"
+                f"✅ Task cancelled for project `{project_id}`", parse_mode="Markdown"
             )
 
     except Exception as exc:
@@ -55,10 +50,7 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def retry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /retry <project_id> command."""
     if not update.message or not context.args:
-        await update.message.reply_text(
-            "Usage: `/retry <project_id>`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("Usage: `/retry <project_id>`", parse_mode="Markdown")
         return
 
     project_id = context.args[0]
@@ -66,15 +58,14 @@ async def retry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{settings.api_base_url}/api/v1/projects/{project_id}/retry",
-                timeout=10.0
+                f"{settings.api_base_url}/api/v1/projects/{project_id}/retry", timeout=10.0
             )
             response.raise_for_status()
 
             await update.message.reply_text(
                 f"✅ Retry initiated for project `{project_id}`\n\n"
                 "Watch your status message for updates.",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
 
     except httpx.HTTPStatusError as exc:

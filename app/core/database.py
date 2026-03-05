@@ -1,12 +1,12 @@
 from collections.abc import AsyncGenerator
 
+from loguru import logger
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from loguru import logger
 
 from app.core.config import get_settings
 
@@ -16,17 +16,17 @@ engine: AsyncEngine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     # Connection pool optimization (Phase 8)
-    pool_size=20,              # Base pool size (increased from 10)
-    max_overflow=40,           # Max overflow connections (increased from 20)
-    pool_pre_ping=True,        # Verify connections before using
-    pool_recycle=3600,         # Recycle connections after 1 hour
-    pool_timeout=30,           # Connection timeout (seconds)
+    pool_size=20,  # Base pool size (increased from 10)
+    max_overflow=40,  # Max overflow connections (increased from 20)
+    pool_pre_ping=True,  # Verify connections before using
+    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_timeout=30,  # Connection timeout (seconds)
     connect_args={
         "server_settings": {
             "application_name": "youtube_shorts_automation",
-            "jit": "off"       # Disable JIT compilation for faster queries
+            "jit": "off",  # Disable JIT compilation for faster queries
         }
-    }
+    },
 )
 
 async_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(

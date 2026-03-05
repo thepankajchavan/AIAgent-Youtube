@@ -1,9 +1,9 @@
 """Unit tests for individual Celery worker tasks with mocked DB and services."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock, PropertyMock
 from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.models.video import VideoProject, VideoStatus
 
@@ -68,9 +68,7 @@ class TestScriptTask:
         assert result["script_data"] == script_data
         assert result["video_format"] == "short"
         assert project.script == script_data["script"]
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.SCRIPT_GENERATING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.SCRIPT_GENERATING)
 
     @patch("app.workers.script_tasks._mark_project_failed")
     @patch("app.workers.script_tasks.emit_status_update")
@@ -82,9 +80,7 @@ class TestScriptTask:
         """Test that content moderation rejection propagates as failure."""
         from app.workers.script_tasks import generate_script_task
 
-        mock_run_async.side_effect = ValueError(
-            "Topic violates content policy (Violence)"
-        )
+        mock_run_async.side_effect = ValueError("Topic violates content policy (Violence)")
 
         project = _make_project(status=VideoStatus.PENDING)
         mock_db.side_effect = _make_mock_db(project)
@@ -130,9 +126,7 @@ class TestAudioTask:
         assert result["audio_path"] == str(audio_path)
         assert result["project_id"] == "test-project-uuid"
         assert project.audio_path == str(audio_path)
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.AUDIO_GENERATING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.AUDIO_GENERATING)
 
 
 class TestVisualTask:
@@ -168,9 +162,7 @@ class TestVisualTask:
 
         assert len(result["clip_paths"]) == 2
         assert result["project_id"] == "test-project-uuid"
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.VIDEO_GENERATING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.VIDEO_GENERATING)
 
     @patch("app.core.config.get_settings")
     @patch("app.workers.media_tasks.emit_status_update")
@@ -235,9 +227,7 @@ class TestAssemblyTask:
         assert result["output_path"] == str(output_path)
         assert project.output_path == str(output_path)
         mock_assemble.assert_called_once()
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.ASSEMBLING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.ASSEMBLING)
 
     @patch("app.workers.assembly_tasks._mark_project_failed")
     @patch("app.workers.assembly_tasks.emit_status_update")
@@ -262,12 +252,11 @@ class TestAssemblyTask:
             },
         ]
 
-        with patch.object(assemble_video_task, "max_retries", 0):
-            with pytest.raises(ValueError):
-                assemble_video_task(parallel_results=parallel_results)
+        with patch.object(assemble_video_task, "max_retries", 0), pytest.raises(ValueError):
+            assemble_video_task(parallel_results=parallel_results)
 
         mock_mark_failed.assert_called_once()
-        assert "test-project-uuid" == mock_mark_failed.call_args[0][0]
+        assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
 
     @patch("app.workers.assembly_tasks._mark_project_failed")
     @patch("app.workers.assembly_tasks.emit_status_update")
@@ -292,12 +281,11 @@ class TestAssemblyTask:
             },
         ]
 
-        with patch.object(assemble_video_task, "max_retries", 0):
-            with pytest.raises(ValueError):
-                assemble_video_task(parallel_results=parallel_results)
+        with patch.object(assemble_video_task, "max_retries", 0), pytest.raises(ValueError):
+            assemble_video_task(parallel_results=parallel_results)
 
         mock_mark_failed.assert_called_once()
-        assert "test-project-uuid" == mock_mark_failed.call_args[0][0]
+        assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
 
 
 class TestUploadTask:
@@ -338,9 +326,7 @@ class TestUploadTask:
         assert result["youtube_url"] == "https://www.youtube.com/watch?v=yt_abc123"
         assert project.status == VideoStatus.COMPLETED
         assert project.youtube_video_id == "yt_abc123"
-        project.validate_status_transition.assert_called_once_with(
-            VideoStatus.UPLOADING
-        )
+        project.validate_status_transition.assert_called_once_with(VideoStatus.UPLOADING)
 
     @patch("app.workers.upload_tasks._mark_project_failed")
     @patch("app.workers.upload_tasks.emit_status_update")
@@ -364,7 +350,7 @@ class TestUploadTask:
                 upload_to_youtube_task(pipeline_data=pipeline_data)
 
         mock_mark_failed.assert_called_once()
-        assert "test-project-uuid" == mock_mark_failed.call_args[0][0]
+        assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
 
     @patch("app.workers.upload_tasks._mark_project_failed")
     @patch("app.workers.upload_tasks.emit_status_update")
@@ -388,7 +374,7 @@ class TestUploadTask:
                 upload_to_youtube_task(pipeline_data=pipeline_data)
 
         mock_mark_failed.assert_called_once()
-        assert "test-project-uuid" == mock_mark_failed.call_args[0][0]
+        assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
 
 
 class TestTaskFailureHandling:

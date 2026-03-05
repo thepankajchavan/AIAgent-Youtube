@@ -8,19 +8,18 @@ Caches frequently accessed data to reduce database load:
 - External API responses (Pexels, ElevenLabs, YouTube)
 """
 
-import json
 import hashlib
-from typing import Any, Callable, TypeVar
+import json
+from collections.abc import Callable
 from functools import wraps
-from datetime import timedelta
+from typing import Any, TypeVar
 
 from loguru import logger
 
 from app.core.redis_client import get_redis_client
 
-
 # Type variable for generic function return types
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class QueryCache:
@@ -35,12 +34,12 @@ class QueryCache:
     PREFIX_YOUTUBE = "cache:youtube:"
 
     # Default TTLs (in seconds)
-    TTL_PROJECT = 60 * 5          # 5 minutes (projects change frequently)
-    TTL_PROJECT_LIST = 60 * 2     # 2 minutes (lists change very frequently)
-    TTL_USER_STATS = 60 * 10      # 10 minutes
-    TTL_PEXELS = 60 * 60 * 24     # 24 hours (search results don't change often)
-    TTL_ELEVENLABS = 60 * 60      # 1 hour (voice list rarely changes)
-    TTL_YOUTUBE = 60 * 60 * 12    # 12 hours (categories/metadata)
+    TTL_PROJECT = 60 * 5  # 5 minutes (projects change frequently)
+    TTL_PROJECT_LIST = 60 * 2  # 2 minutes (lists change very frequently)
+    TTL_USER_STATS = 60 * 10  # 10 minutes
+    TTL_PEXELS = 60 * 60 * 24  # 24 hours (search results don't change often)
+    TTL_ELEVENLABS = 60 * 60  # 1 hour (voice list rarely changes)
+    TTL_YOUTUBE = 60 * 60 * 12  # 12 hours (categories/metadata)
 
     @classmethod
     async def get(cls, key: str) -> Any | None:
@@ -63,7 +62,7 @@ class QueryCache:
 
             # Deserialize JSON
             if isinstance(value, bytes):
-                value = value.decode('utf-8')
+                value = value.decode("utf-8")
 
             return json.loads(value)
         except json.JSONDecodeError as e:
@@ -212,11 +211,7 @@ class QueryCache:
         return hashlib.md5(key_str.encode()).hexdigest()
 
 
-def cached(
-    prefix: str,
-    ttl: int = 300,
-    key_builder: Callable | None = None
-):
+def cached(prefix: str, ttl: int = 300, key_builder: Callable | None = None):
     """
     Decorator to cache function results in Redis.
 
@@ -234,6 +229,7 @@ def cached(
     Returns:
         Decorated function with caching
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> T:
@@ -263,13 +259,16 @@ def cached(
             return result
 
         return wrapper
+
     return decorator
 
 
 # ── Convenience Functions for Common Cache Operations ─────────
 
 
-async def cache_project(project_id: int, project_data: dict, ttl: int = QueryCache.TTL_PROJECT) -> bool:
+async def cache_project(
+    project_id: int, project_data: dict, ttl: int = QueryCache.TTL_PROJECT
+) -> bool:
     """Cache project details."""
     key = f"{QueryCache.PREFIX_PROJECT}{project_id}"
     return await QueryCache.set(key, project_data, ttl=ttl)

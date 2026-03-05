@@ -1,7 +1,7 @@
 """Test utilities and helper functions."""
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 
 def create_mock_audio(path: Path, duration_seconds: float = 1.0):
@@ -13,17 +13,27 @@ def create_mock_audio(path: Path, duration_seconds: float = 1.0):
         duration_seconds: Duration of silence (default: 1.0 second)
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=duration={duration_seconds}",
-        "-c:a", "libmp3lame", "-b:a", "128k", str(path)
-    ], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anullsrc=duration={duration_seconds}",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "128k",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
 
 
 def create_mock_video(
-    path: Path,
-    duration_seconds: float = 1.0,
-    width: int = 1080,
-    height: int = 1920
+    path: Path, duration_seconds: float = 1.0, width: int = 1080, height: int = 1920
 ):
     """
     Create a black video file for testing.
@@ -35,12 +45,25 @@ def create_mock_video(
         height: Video height (default: 1920 for Shorts)
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "lavfi",
-        "-i", f"color=black:s={width}x{height}:d={duration_seconds}",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
-        str(path)
-    ], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=black:s={width}x{height}:d={duration_seconds}",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "ultrafast",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
 
 
 def assert_video_file_valid(path: Path):
@@ -57,10 +80,11 @@ def assert_video_file_valid(path: Path):
     assert path.stat().st_size > 0, f"Video file is empty: {path}"
 
     # Use ffprobe to validate
-    result = subprocess.run([
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_format", str(path)
-    ], capture_output=True, text=True)
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, f"Invalid video file: {path}"
 
 
@@ -78,8 +102,9 @@ def assert_audio_file_valid(path: Path):
     assert path.stat().st_size > 0, f"Audio file is empty: {path}"
 
     # Use ffprobe to validate
-    result = subprocess.run([
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_format", str(path)
-    ], capture_output=True, text=True)
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, f"Invalid audio file: {path}"

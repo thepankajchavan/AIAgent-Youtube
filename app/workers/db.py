@@ -8,12 +8,12 @@ a plain SQLAlchemy Session and handles commit/rollback/close.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from collections.abc import Generator
+from contextlib import contextmanager
 
+from loguru import logger
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from loguru import logger
 
 from app.core.config import get_settings
 

@@ -16,9 +16,9 @@ from loguru import logger
 
 from app.core.celery_app import celery_app
 from app.models.video import VideoProject, VideoStatus
+from app.services.ai_video_service import generate_all_visuals, split_script_to_scenes
 from app.services.tts_service import generate_speech
 from app.services.visual_service import fetch_clips  # Pexels (stock footage) - fallback only
-from app.services.ai_video_service import split_script_to_scenes, generate_all_visuals
 from app.workers.db import get_sync_db
 from app.workers.events import emit_status_update
 
@@ -38,6 +38,7 @@ def _mark_project_failed(project_id: str, error_message: str) -> None:
 
 
 # ── TTS Audio Task ───────────────────────────────────────────
+
 
 @celery_app.task(
     bind=True,
@@ -62,7 +63,7 @@ def generate_audio_task(
     """
     project_id = pipeline_data["project_id"]
     script_text = pipeline_data["script_data"]["script"]
-    video_format = pipeline_data["video_format"]
+    pipeline_data["video_format"]
 
     logger.info(
         "Task start: generate_audio — project={} script_len={}",
@@ -125,12 +126,16 @@ def generate_audio_task(
                 )
 
             if self.request.retries >= self.max_retries:
-                _mark_project_failed(project_id, f"TTS generation failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id,
+                    f"TTS generation failed after {self.max_retries + 1} attempts: {exc}",
+                )
                 raise
             raise self.retry(exc=exc)
 
 
 # ── Stock Video Fetch Task ───────────────────────────────────
+
 
 @celery_app.task(
     bind=True,
@@ -160,6 +165,7 @@ def fetch_visuals_task(
         Updated pipeline_data with clip_paths added.
     """
     from app.core.config import get_settings
+
     settings = get_settings()
 
     project_id = pipeline_data["project_id"]
@@ -200,10 +206,7 @@ def fetch_visuals_task(
             # Use project's visual_strategy (not global setting) to decide mode.
             # This task is only called in the stock_only pipeline path;
             # the AI path uses scene_tasks.generate_visuals_task instead.
-            use_ai = (
-                project.visual_strategy != "stock_only"
-                and settings.ai_video_enabled
-            )
+            use_ai = project.visual_strategy != "stock_only" and settings.ai_video_enabled
             if use_ai:
                 # ═══ AI VIDEO GENERATION MODE ═══
                 logger.info("Using AI video generation (strategy={})", settings.ai_video_strategy)
@@ -233,7 +236,9 @@ def fetch_visuals_task(
 
                 # Log cost breakdown
                 total_cost = sum(s.generation_cost for s in scenes)
-                ai_count = sum(1 for s in scenes if s.provider_used in ["runway", "stability", "kling"])
+                ai_count = sum(
+                    1 for s in scenes if s.provider_used in ["runway", "stability", "kling"]
+                )
                 stock_count = sum(1 for s in scenes if s.provider_used == "pexels")
 
                 logger.info(
@@ -303,6 +308,8 @@ def fetch_visuals_task(
                 )
 
             if self.request.retries >= self.max_retries:
-                _mark_project_failed(project_id, f"Visual fetch failed after {self.max_retries + 1} attempts: {exc}")
+                _mark_project_failed(
+                    project_id, f"Visual fetch failed after {self.max_retries + 1} attempts: {exc}"
+                )
                 raise
             raise self.retry(exc=exc)

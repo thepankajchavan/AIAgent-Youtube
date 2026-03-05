@@ -1,8 +1,9 @@
 """Integration tests for system routes."""
 
+from unittest.mock import MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, MagicMock
 
 
 class TestHealthCheck:
@@ -32,8 +33,7 @@ class TestHealthCheck:
         """Test health check when Redis is down."""
         # Mock Redis to fail
         mocker.patch(
-            "app.api.routes.system.Redis.from_url",
-            side_effect=Exception("Connection refused")
+            "app.api.routes.system.Redis.from_url", side_effect=Exception("Connection refused")
         )
 
         response = await client.get("/api/v1/system/health")
@@ -55,10 +55,7 @@ class TestGetTaskStatus:
         mock_result.status = "PENDING"
         mock_result.ready.return_value = False
 
-        mocker.patch(
-            "app.api.routes.system.celery_app.AsyncResult",
-            return_value=mock_result
-        )
+        mocker.patch("app.api.routes.system.celery_app.AsyncResult", return_value=mock_result)
 
         response = await client.get("/api/v1/system/tasks/test-task-123")
 
@@ -75,10 +72,7 @@ class TestGetTaskStatus:
         mock_result.ready.return_value = True
         mock_result.result = {"video_id": "abc123"}
 
-        mocker.patch(
-            "app.api.routes.system.celery_app.AsyncResult",
-            return_value=mock_result
-        )
+        mocker.patch("app.api.routes.system.celery_app.AsyncResult", return_value=mock_result)
 
         response = await client.get("/api/v1/system/tasks/test-task-123")
 
@@ -95,10 +89,7 @@ class TestGetTaskStatus:
         mock_result.ready.return_value = False
         mock_result.info = "Task failed: API error"
 
-        mocker.patch(
-            "app.api.routes.system.celery_app.AsyncResult",
-            return_value=mock_result
-        )
+        mocker.patch("app.api.routes.system.celery_app.AsyncResult", return_value=mock_result)
 
         response = await client.get("/api/v1/system/tasks/test-task-123")
 
@@ -116,10 +107,7 @@ class TestRevokeTask:
         mock_control = MagicMock()
         mock_control.revoke = MagicMock()
 
-        mocker.patch(
-            "app.api.routes.system.celery_app.control",
-            mock_control
-        )
+        mocker.patch("app.api.routes.system.celery_app.control", mock_control)
 
         response = await client.post("/api/v1/system/tasks/test-task-123/revoke")
 
@@ -136,14 +124,9 @@ class TestRevokeTask:
         mock_control = MagicMock()
         mock_control.revoke = MagicMock()
 
-        mocker.patch(
-            "app.api.routes.system.celery_app.control",
-            mock_control
-        )
+        mocker.patch("app.api.routes.system.celery_app.control", mock_control)
 
-        response = await client.post(
-            "/api/v1/system/tasks/test-task-123/revoke?terminate=true"
-        )
+        response = await client.post("/api/v1/system/tasks/test-task-123/revoke?terminate=true")
 
         assert response.status_code == 200
         data = response.json()
@@ -157,10 +140,7 @@ class TestRevokeTask:
         mock_control = MagicMock()
         mock_control.revoke.side_effect = Exception("Celery error")
 
-        mocker.patch(
-            "app.api.routes.system.celery_app.control",
-            mock_control
-        )
+        mocker.patch("app.api.routes.system.celery_app.control", mock_control)
 
         response = await client.post("/api/v1/system/tasks/test-task-123/revoke")
 

@@ -5,18 +5,18 @@ Pipeline Routes — trigger new video creation pipelines.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
-from app.core.database import get_db
-from app.models.video import VideoProject, VideoStatus, VideoFormat
 from app.api.schemas import (
     PipelineRequest,
     PipelineResponse,
     VideoStatusEnum,
     VisualStrategyEnum,
 )
+from app.core.config import get_settings
+from app.core.database import get_db
+from app.models.video import VideoFormat, VideoProject, VideoStatus
 from app.workers.pipeline import run_pipeline_task
 
 router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
@@ -63,7 +63,7 @@ async def trigger_pipeline(
             detail=(
                 f"System is currently overloaded. Queue depth: {current_depth} "
                 f"(max: {QueueBackpressure.MAX_QUEUE_DEPTH}). Please try again later."
-            )
+            ),
         )
 
     # Validate AI video settings

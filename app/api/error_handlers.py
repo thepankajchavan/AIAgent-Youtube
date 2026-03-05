@@ -1,13 +1,12 @@
 """Centralized error handlers for sanitized error responses."""
 
 import uuid
-from typing import Union
 
 from fastapi import Request, status
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 def generate_request_id() -> str:
@@ -15,10 +14,7 @@ def generate_request_id() -> str:
     return str(uuid.uuid4())
 
 
-async def http_exception_handler(
-    request: Request,
-    exc: StarletteHTTPException
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """
     Handle HTTP exceptions with sanitized error messages.
 
@@ -59,8 +55,7 @@ async def http_exception_handler(
 
 
 async def validation_exception_handler(
-    request: Request,
-    exc: RequestValidationError
+    request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """
     Handle request validation errors with structured field-level errors.
@@ -85,10 +80,7 @@ async def validation_exception_handler(
     )
 
 
-async def generic_exception_handler(
-    request: Request,
-    exc: Exception
-) -> JSONResponse:
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Catch-all handler for unexpected exceptions.
 

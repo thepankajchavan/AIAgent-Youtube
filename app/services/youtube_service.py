@@ -9,18 +9,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from loguru import logger
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from loguru import logger
 
 from app.core.config import get_settings
 from app.core.encryption import decrypt_string, encrypt_string
@@ -52,7 +52,7 @@ def _read_token(token_path: Path) -> str | None:
         Token JSON string, or None if file doesn't exist
     """
     # Check for encrypted token first
-    encrypted_path = token_path.with_suffix('.json.encrypted')
+    encrypted_path = token_path.with_suffix(".json.encrypted")
 
     if encrypted_path.exists():
         logger.debug(f"Reading encrypted token from {encrypted_path}")
@@ -86,7 +86,7 @@ def _write_token(token_path: Path, token_json: str) -> None:
         token_path: Path to token file (e.g., youtube_token.json)
         token_json: Token JSON string
     """
-    encrypted_path = token_path.with_suffix('.json.encrypted')
+    encrypted_path = token_path.with_suffix(".json.encrypted")
 
     # Try to encrypt if encryption key is configured
     try:
@@ -149,7 +149,8 @@ def _get_authenticated_service():
     wait=wait_exponential(multiplier=5, min=10, max=120),
     retry=retry_if_exception_type((IOError, OSError, ConnectionError)),
     before_sleep=lambda rs: logger.warning(
-        "YouTube upload attempt {} failed, retrying …", rs.attempt_number,
+        "YouTube upload attempt {} failed, retrying …",
+        rs.attempt_number,
     ),
 )
 def upload_video(

@@ -1,8 +1,9 @@
 """Integration tests for pipeline routes."""
 
+from unittest.mock import MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock
 
 from app.models.video import VideoProject, VideoStatus
 
@@ -17,8 +18,7 @@ class TestTriggerPipeline:
         mock_celery_result.id = "celery-task-123"
 
         mock_delay = mocker.patch(
-            "app.api.routes.pipeline.run_pipeline_task.delay",
-            return_value=mock_celery_result
+            "app.api.routes.pipeline.run_pipeline_task.delay", return_value=mock_celery_result
         )
 
         # Mock backpressure check
@@ -33,8 +33,8 @@ class TestTriggerPipeline:
                 "topic": "5 facts about space",
                 "video_format": "short",
                 "provider": "openai",
-                "skip_upload": False
-            }
+                "skip_upload": False,
+            },
         )
 
         assert response.status_code == 202
@@ -48,6 +48,7 @@ class TestTriggerPipeline:
         assert call_kwargs["topic"] == "5 facts about space"
 
         from sqlalchemy import select
+
         result = await db_session.execute(select(VideoProject))
         projects = result.scalars().all()
         assert len(projects) == 1
@@ -56,28 +57,21 @@ class TestTriggerPipeline:
     @pytest.mark.asyncio
     async def test_trigger_pipeline_invalid_topic(self, client: AsyncClient):
         """Test validation errors."""
-        response = await client.post(
-            "/api/v1/pipeline",
-            json={"topic": "ab"}  # Too short
-        )
+        response = await client.post("/api/v1/pipeline", json={"topic": "ab"})  # Too short
         assert response.status_code == 422
 
     @pytest.mark.asyncio
     async def test_trigger_pipeline_celery_failure(self, client: AsyncClient, mocker):
         """Test Celery dispatch failures."""
         mocker.patch(
-            "app.api.routes.pipeline.run_pipeline_task.delay",
-            side_effect=Exception("Redis error")
+            "app.api.routes.pipeline.run_pipeline_task.delay", side_effect=Exception("Redis error")
         )
         mocker.patch(
             "app.core.circuit_breaker.QueueBackpressure.can_accept_new_pipeline",
             return_value=(True, 0),
         )
 
-        response = await client.post(
-            "/api/v1/pipeline",
-            json={"topic": "Test topic"}
-        )
+        response = await client.post("/api/v1/pipeline", json={"topic": "Test topic"})
 
         assert response.status_code == 503
 
@@ -92,16 +86,11 @@ class TestBatchPipeline:
         mock_celery_result.id = "task-123"
 
         mocker.patch(
-            "app.api.routes.pipeline.run_pipeline_task.delay",
-            return_value=mock_celery_result
+            "app.api.routes.pipeline.run_pipeline_task.delay", return_value=mock_celery_result
         )
 
         response = await client.post(
-            "/api/v1/pipeline/batch",
-            json=[
-                {"topic": "Topic 1"},
-                {"topic": "Topic 2"}
-            ]
+            "/api/v1/pipeline/batch", json=[{"topic": "Topic 1"}, {"topic": "Topic 2"}]
         )
 
         assert response.status_code == 202

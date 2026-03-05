@@ -1,8 +1,8 @@
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -112,19 +112,19 @@ class Settings(BaseSettings):
     # ── API Authentication ───────────────────────────────────
     api_auth_enabled: bool = Field(
         default=True,
-        description="Enable API key authentication for all endpoints (except public paths)"
+        description="Enable API key authentication for all endpoints (except public paths)",
     )
 
     # ── Security & Encryption ────────────────────────────────
     encryption_key: str = Field(
         default="",
-        description="Fernet encryption key for sensitive data (generate with Fernet.generate_key())"
+        description="Fernet encryption key for sensitive data (generate with Fernet.generate_key())",
     )
 
     # ── CORS Configuration ───────────────────────────────────
     cors_allowed_origins: str = Field(
         default="*",
-        description="Comma-separated list of allowed CORS origins (use '*' for development only)"
+        description="Comma-separated list of allowed CORS origins (use '*' for development only)",
     )
 
     # ── Media Paths ──────────────────────────────────────────

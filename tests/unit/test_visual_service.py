@@ -1,11 +1,11 @@
 """Unit tests for Visual service with mocked Pexels API."""
 
-import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
-import httpx
 
-from app.services.visual_service import search_videos, download_video, fetch_clips
+import httpx
+import pytest
+
+from app.services.visual_service import download_video, fetch_clips, search_videos
 
 
 class TestVideoSearch:
@@ -35,9 +35,9 @@ class TestVideoSearch:
                             "file_type": "video/mp4",
                             "width": 1080,
                             "height": 1920,
-                            "link": "https://example.com/video1.mp4"
+                            "link": "https://example.com/video1.mp4",
                         }
-                    ]
+                    ],
                 },
                 {
                     "id": 456,
@@ -49,10 +49,10 @@ class TestVideoSearch:
                             "file_type": "video/mp4",
                             "width": 720,
                             "height": 1280,
-                            "link": "https://example.com/video2.mp4"
+                            "link": "https://example.com/video2.mp4",
                         }
-                    ]
-                }
+                    ],
+                },
             ]
         }
 
@@ -68,11 +68,7 @@ class TestVideoSearch:
         mocker.patch("httpx.AsyncClient", return_value=mock_client)
 
         # Search videos
-        result = await search_videos(
-            query="ocean waves",
-            orientation="portrait",
-            per_page=5
-        )
+        result = await search_videos(query="ocean waves", orientation="portrait", per_page=5)
 
         # Verify result
         assert len(result) == 2
@@ -104,35 +100,41 @@ class TestVideoSearch:
                     "id": 1,
                     "url": "https://pexels.com/video/1",
                     "duration": 3,  # Too short (min is 5)
-                    "video_files": [{
-                        "file_type": "video/mp4",
-                        "width": 1080,
-                        "height": 1920,
-                        "link": "https://example.com/video1.mp4"
-                    }]
+                    "video_files": [
+                        {
+                            "file_type": "video/mp4",
+                            "width": 1080,
+                            "height": 1920,
+                            "link": "https://example.com/video1.mp4",
+                        }
+                    ],
                 },
                 {
                     "id": 2,
                     "url": "https://pexels.com/video/2",
                     "duration": 10,  # Valid
-                    "video_files": [{
-                        "file_type": "video/mp4",
-                        "width": 1080,
-                        "height": 1920,
-                        "link": "https://example.com/video2.mp4"
-                    }]
+                    "video_files": [
+                        {
+                            "file_type": "video/mp4",
+                            "width": 1080,
+                            "height": 1920,
+                            "link": "https://example.com/video2.mp4",
+                        }
+                    ],
                 },
                 {
                     "id": 3,
                     "url": "https://pexels.com/video/3",
                     "duration": 35,  # Too long (max is 30)
-                    "video_files": [{
-                        "file_type": "video/mp4",
-                        "width": 1080,
-                        "height": 1920,
-                        "link": "https://example.com/video3.mp4"
-                    }]
-                }
+                    "video_files": [
+                        {
+                            "file_type": "video/mp4",
+                            "width": 1080,
+                            "height": 1920,
+                            "link": "https://example.com/video3.mp4",
+                        }
+                    ],
+                },
             ]
         }
 
@@ -175,16 +177,16 @@ class TestVideoSearch:
                             "file_type": "video/mp4",
                             "width": 1920,
                             "height": 1080,
-                            "link": "https://example.com/landscape.mp4"
+                            "link": "https://example.com/landscape.mp4",
                         },
                         # Portrait file (correct orientation)
                         {
                             "file_type": "video/mp4",
                             "width": 1080,
                             "height": 1920,
-                            "link": "https://example.com/portrait.mp4"
-                        }
-                    ]
+                            "link": "https://example.com/portrait.mp4",
+                        },
+                    ],
                 }
             ]
         }
@@ -242,9 +244,7 @@ class TestVideoSearch:
         mock_response = AsyncMock()
         mock_response.raise_for_status = MagicMock(
             side_effect=httpx.HTTPStatusError(
-                "401 Unauthorized",
-                request=MagicMock(),
-                response=MagicMock(status_code=401)
+                "401 Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
             )
         )
 
@@ -256,6 +256,7 @@ class TestVideoSearch:
         mocker.patch("httpx.AsyncClient", return_value=mock_client)
 
         from tenacity import RetryError
+
         with pytest.raises((httpx.HTTPStatusError, RetryError)):
             await search_videos(query="test")
 
@@ -293,8 +294,7 @@ class TestVideoDownload:
 
         # Download video
         result = await download_video(
-            download_url="https://example.com/video.mp4",
-            output_filename="test_video.mp4"
+            download_url="https://example.com/video.mp4", output_filename="test_video.mp4"
         )
 
         # Verify result
@@ -382,26 +382,15 @@ class TestFetchClips:
 
         # Mock search results
         mock_search_results = [
-            {
-                "id": 1,
-                "download_url": "https://example.com/video1.mp4",
-                "duration": 10
-            },
-            {
-                "id": 2,
-                "download_url": "https://example.com/video2.mp4",
-                "duration": 15
-            }
+            {"id": 1, "download_url": "https://example.com/video1.mp4", "duration": 10},
+            {"id": 2, "download_url": "https://example.com/video2.mp4", "duration": 15},
         ]
 
         # Mock search function
         async def mock_search_videos(query, orientation, per_page):
             return mock_search_results
 
-        mocker.patch(
-            "app.services.visual_service.search_videos",
-            side_effect=mock_search_videos
-        )
+        mocker.patch("app.services.visual_service.search_videos", side_effect=mock_search_videos)
 
         # Mock download function
         download_counter = [0]
@@ -413,16 +402,11 @@ class TestFetchClips:
             path.write_bytes(b"fake_video_data")
             return path
 
-        mocker.patch(
-            "app.services.visual_service.download_video",
-            side_effect=mock_download_video
-        )
+        mocker.patch("app.services.visual_service.download_video", side_effect=mock_download_video)
 
         # Fetch clips
         result = await fetch_clips(
-            queries=["ocean", "sunset"],
-            orientation="portrait",
-            clips_per_query=2
+            queries=["ocean", "sunset"], orientation="portrait", clips_per_query=2
         )
 
         # Verify results
@@ -440,17 +424,13 @@ class TestFetchClips:
 
         # Mock 5 search results
         mock_search_results = [
-            {"id": i, "download_url": f"https://example.com/video{i}.mp4"}
-            for i in range(1, 6)
+            {"id": i, "download_url": f"https://example.com/video{i}.mp4"} for i in range(1, 6)
         ]
 
         async def mock_search_videos(query, orientation, per_page):
             return mock_search_results
 
-        mocker.patch(
-            "app.services.visual_service.search_videos",
-            side_effect=mock_search_videos
-        )
+        mocker.patch("app.services.visual_service.search_videos", side_effect=mock_search_videos)
 
         download_calls = []
 
@@ -461,16 +441,10 @@ class TestFetchClips:
             path.write_bytes(b"data")
             return path
 
-        mocker.patch(
-            "app.services.visual_service.download_video",
-            side_effect=mock_download_video
-        )
+        mocker.patch("app.services.visual_service.download_video", side_effect=mock_download_video)
 
         # Fetch only 2 clips per query
-        result = await fetch_clips(
-            queries=["test"],
-            clips_per_query=2
-        )
+        result = await fetch_clips(queries=["test"], clips_per_query=2)
 
         # Should only download 2 clips despite 5 being available
         assert len(result) == 2

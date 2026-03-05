@@ -19,7 +19,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/help` - Show this message\n\n"
         "*Example:*\n"
         "`/video 5 amazing facts about black holes`",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
 

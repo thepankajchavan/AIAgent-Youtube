@@ -7,9 +7,7 @@ Scheduled tasks that clean up:
 - Orphaned media files (no associated project)
 """
 
-import os
-import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +17,8 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import get_async_session
-from app.models.video_project import VideoProject, ProjectStatus
 from app.core.metrics import media_disk_usage_bytes, media_files_total
+from app.models.video_project import ProjectStatus, VideoProject
 
 
 @shared_task(name="cleanup_tasks.cleanup_completed_projects")
@@ -32,13 +30,14 @@ def cleanup_completed_projects_task() -> dict[str, Any]:
         Dictionary with cleanup statistics
     """
     import asyncio
+
     return asyncio.run(cleanup_completed_projects())
 
 
 async def cleanup_completed_projects() -> dict[str, Any]:
     """Clean up old completed project media files."""
     settings = get_settings()
-    cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff_time = datetime.now(UTC) - timedelta(days=7)
 
     deleted_files = 0
     freed_bytes = 0
@@ -49,7 +48,7 @@ async def cleanup_completed_projects() -> dict[str, Any]:
             # Get completed projects older than 7 days
             query = select(VideoProject).where(
                 VideoProject.status == ProjectStatus.COMPLETED,
-                VideoProject.updated_at < cutoff_time
+                VideoProject.updated_at < cutoff_time,
             )
             result = await session.execute(query)
             projects = result.scalars().all()
@@ -60,10 +59,7 @@ async def cleanup_completed_projects() -> dict[str, Any]:
                 try:
                     # Count and delete media files
                     files_deleted, bytes_freed = await _delete_project_media(
-                        project.id,
-                        settings.audio_dir,
-                        settings.video_dir,
-                        settings.output_dir
+                        project.id, settings.audio_dir, settings.video_dir, settings.output_dir
                     )
 
                     deleted_files += files_deleted
@@ -98,7 +94,7 @@ async def cleanup_completed_projects() -> dict[str, Any]:
         "freed_bytes": freed_bytes,
         "freed_mb": round(freed_bytes / 1024 / 1024, 2),
         "projects_cleaned": len(deleted_projects),
-        "project_ids": deleted_projects
+        "project_ids": deleted_projects,
     }
 
 
@@ -111,13 +107,14 @@ def cleanup_failed_projects_task() -> dict[str, Any]:
         Dictionary with cleanup statistics
     """
     import asyncio
+
     return asyncio.run(cleanup_failed_projects())
 
 
 async def cleanup_failed_projects() -> dict[str, Any]:
     """Clean up old failed project media files."""
     settings = get_settings()
-    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_time = datetime.now(UTC) - timedelta(hours=24)
 
     deleted_files = 0
     freed_bytes = 0
@@ -127,8 +124,7 @@ async def cleanup_failed_projects() -> dict[str, Any]:
         try:
             # Get failed projects older than 24 hours
             query = select(VideoProject).where(
-                VideoProject.status == ProjectStatus.FAILED,
-                VideoProject.updated_at < cutoff_time
+                VideoProject.status == ProjectStatus.FAILED, VideoProject.updated_at < cutoff_time
             )
             result = await session.execute(query)
             projects = result.scalars().all()
@@ -139,10 +135,7 @@ async def cleanup_failed_projects() -> dict[str, Any]:
                 try:
                     # Count and delete media files
                     files_deleted, bytes_freed = await _delete_project_media(
-                        project.id,
-                        settings.audio_dir,
-                        settings.video_dir,
-                        settings.output_dir
+                        project.id, settings.audio_dir, settings.video_dir, settings.output_dir
                     )
 
                     deleted_files += files_deleted
@@ -177,7 +170,7 @@ async def cleanup_failed_projects() -> dict[str, Any]:
         "freed_bytes": freed_bytes,
         "freed_mb": round(freed_bytes / 1024 / 1024, 2),
         "projects_cleaned": len(deleted_projects),
-        "project_ids": deleted_projects
+        "project_ids": deleted_projects,
     }
 
 
@@ -190,6 +183,7 @@ def cleanup_orphaned_files_task() -> dict[str, Any]:
         Dictionary with cleanup statistics
     """
     import asyncio
+
     return asyncio.run(cleanup_orphaned_files())
 
 
@@ -210,10 +204,10 @@ async def cleanup_orphaned_files() -> dict[str, Any]:
             logger.info(f"Checking for orphaned files (valid projects: {len(valid_project_ids)})")
 
             # Check each media directory
-            for dir_name, dir_path in [
+            for _dir_name, dir_path in [
                 ("audio", settings.audio_dir),
                 ("video", settings.video_dir),
-                ("output", settings.output_dir)
+                ("output", settings.output_dir),
             ]:
                 if not dir_path.exists():
                     continue
@@ -257,7 +251,7 @@ async def cleanup_orphaned_files() -> dict[str, Any]:
         "task": "cleanup_orphaned_files",
         "deleted_files": deleted_files,
         "freed_bytes": freed_bytes,
-        "freed_mb": round(freed_bytes / 1024 / 1024, 2)
+        "freed_mb": round(freed_bytes / 1024 / 1024, 2),
     }
 
 
@@ -270,6 +264,7 @@ def update_disk_metrics_task() -> dict[str, Any]:
         Dictionary with current disk usage
     """
     import asyncio
+
     return asyncio.run(update_disk_metrics())
 
 
@@ -283,10 +278,7 @@ async def update_disk_metrics() -> dict[str, Any]:
 
 
 async def _delete_project_media(
-    project_id: int,
-    audio_dir: Path,
-    video_dir: Path,
-    output_dir: Path
+    project_id: int, audio_dir: Path, video_dir: Path, output_dir: Path
 ) -> tuple[int, int]:
     """
     Delete all media files for a project.
@@ -339,7 +331,7 @@ async def _update_disk_metrics(settings: Any) -> dict[str, Any]:
     for media_type, dir_path in [
         ("audio", settings.audio_dir),
         ("video", settings.video_dir),
-        ("output", settings.output_dir)
+        ("output", settings.output_dir),
     ]:
         if not dir_path.exists():
             stats[media_type] = {"bytes": 0, "files": 0}
@@ -358,7 +350,7 @@ async def _update_disk_metrics(settings: Any) -> dict[str, Any]:
         stats[media_type] = {
             "bytes": total_bytes,
             "mb": round(total_bytes / 1024 / 1024, 2),
-            "files": file_count
+            "files": file_count,
         }
 
         # Update Prometheus metrics
@@ -368,14 +360,11 @@ async def _update_disk_metrics(settings: Any) -> dict[str, Any]:
     total_bytes = sum(s["bytes"] for s in stats.values())
     total_files = sum(s["files"] for s in stats.values())
 
-    logger.debug(
-        f"Disk usage: {total_bytes / 1024 / 1024:.2f} MB total, "
-        f"{total_files} files"
-    )
+    logger.debug(f"Disk usage: {total_bytes / 1024 / 1024:.2f} MB total, " f"{total_files} files")
 
     return {
         "total_bytes": total_bytes,
         "total_mb": round(total_bytes / 1024 / 1024, 2),
         "total_files": total_files,
-        "by_type": stats
+        "by_type": stats,
     }
