@@ -26,12 +26,19 @@ class LLMProviderEnum(str, Enum):
 class VideoStatusEnum(str, Enum):
     PENDING = "pending"
     SCRIPT_GENERATING = "script_generating"
+    SCENE_SPLITTING = "scene_splitting"
     AUDIO_GENERATING = "audio_generating"
     VIDEO_GENERATING = "video_generating"
     ASSEMBLING = "assembling"
     UPLOADING = "uploading"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class VisualStrategyEnum(str, Enum):
+    STOCK_ONLY = "stock_only"
+    AI_ONLY = "ai_only"
+    HYBRID = "hybrid"
 
 
 # ── Pipeline ─────────────────────────────────────────────────
@@ -57,12 +64,20 @@ class PipelineRequest(BaseModel):
         default=False,
         description="If true, pipeline stops after assembly (no YouTube upload).",
     )
+    visual_strategy: VisualStrategyEnum = Field(
+        default=VisualStrategyEnum.STOCK_ONLY,
+        description="Visual strategy: stock_only, ai_only, or hybrid.",
+    )
+    ai_video_provider: str | None = Field(
+        default=None,
+        description="AI video provider override (uses config default if None).",
+    )
 
 
 class PipelineResponse(BaseModel):
     """Response after triggering a pipeline."""
     project_id: uuid.UUID
-    celery_task_id: str
+    celery_task_id: str | None = None
     status: VideoStatusEnum
     message: str
 
@@ -82,6 +97,10 @@ class ProjectResponse(BaseModel):
     output_path: str | None = None
     youtube_video_id: str | None = None
     youtube_url: str | None = None
+    visual_strategy: str | None = None
+    ai_video_provider: str | None = None
+    scene_plan: dict | None = None
+    ai_video_cost: float | None = None
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime

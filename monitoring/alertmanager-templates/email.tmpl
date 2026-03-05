@@ -1,0 +1,64 @@
+{{ define "email.default.subject" }}
+[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.alertname }}
+{{ end }}
+
+{{ define "email.default.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .header { background: #f4f4f4; padding: 20px; border-bottom: 3px solid #333; }
+    .alert { margin: 20px 0; padding: 15px; border-left: 4px solid #ff6b6b; background: #fff5f5; }
+    .alert.warning { border-left-color: #ffa500; background: #fff8e1; }
+    .alert.critical { border-left-color: #ff0000; background: #ffe0e0; }
+    .label { font-weight: bold; color: #555; }
+    .footer { margin-top: 30px; padding: 20px; background: #f4f4f4; font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🔔 YouTube Shorts Automation - Alert Notification</h1>
+    <p><strong>Status:</strong> {{ .Status | toUpper }}</p>
+    <p><strong>Group:</strong> {{ .GroupLabels.alertname }}</p>
+  </div>
+
+  {{ if gt (len .Alerts.Firing) 0 }}
+  <h2>🔥 Firing Alerts ({{ .Alerts.Firing | len }})</h2>
+  {{ range .Alerts.Firing }}
+  <div class="alert {{ .Labels.severity }}">
+    <h3>{{ .Labels.alertname }}</h3>
+    <p><span class="label">Severity:</span> {{ .Labels.severity | toUpper }}</p>
+    <p><span class="label">Summary:</span> {{ .Annotations.summary }}</p>
+    <p><span class="label">Description:</span> {{ .Annotations.description }}</p>
+    <p><span class="label">Started:</span> {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}</p>
+    {{ if .Labels.service }}
+    <p><span class="label">Service:</span> {{ .Labels.service }}</p>
+    {{ end }}
+    {{ if .Labels.queue }}
+    <p><span class="label">Queue:</span> {{ .Labels.queue }}</p>
+    {{ end }}
+  </div>
+  {{ end }}
+  {{ end }}
+
+  {{ if gt (len .Alerts.Resolved) 0 }}
+  <h2>✅ Resolved Alerts ({{ .Alerts.Resolved | len }})</h2>
+  {{ range .Alerts.Resolved }}
+  <div class="alert">
+    <h3>{{ .Labels.alertname }}</h3>
+    <p><span class="label">Summary:</span> {{ .Annotations.summary }}</p>
+    <p><span class="label">Resolved:</span> {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}</p>
+    <p><span class="label">Duration:</span> {{ .EndsAt.Sub .StartsAt }}</p>
+  </div>
+  {{ end }}
+  {{ end }}
+
+  <div class="footer">
+    <p>This is an automated alert from the YouTube Shorts Automation monitoring system.</p>
+    <p>Grafana Dashboard: <a href="http://localhost:3000">http://localhost:3000</a></p>
+    <p>Prometheus: <a href="http://localhost:9090">http://localhost:9090</a></p>
+  </div>
+</body>
+</html>
+{{ end }}

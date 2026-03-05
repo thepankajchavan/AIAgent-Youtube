@@ -146,15 +146,27 @@ async def retry_project(
             project_id=str(project.id),
             topic=project.topic,
             video_format=project.format.value,
+            provider=project.provider,  # USE STORED PROVIDER
+            skip_upload=False,  # Default for retry
         )
+
+        project.celery_task_id = celery_result.id
+        db.add(project)
+
+        # Explicit commit
+        await db.commit()
+
+        logger.info("Project retried — {} new_task={}", project_id, celery_result.id)
+        return ProjectResponse.model_validate(project)
+
     except Exception as exc:
+        # Mark as FAILED and commit
+        project.status = VideoStatus.FAILED
+        project.error_message = f"Retry dispatch failed: {exc}"
+        db.add(project)
+        await db.commit()
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Failed to dispatch retry: {exc}",
         )
-
-    project.celery_task_id = celery_result.id
-    db.add(project)
-
-    logger.info("Project retried — {} new_task={}", project_id, celery_result.id)
-    return ProjectResponse.model_validate(project)

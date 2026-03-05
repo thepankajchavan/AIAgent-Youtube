@@ -21,6 +21,7 @@ from tenacity import (
 from loguru import logger
 
 from app.core.config import get_settings
+from app.core.cache import cache_pexels_search, get_cached_pexels_search
 
 settings = get_settings()
 
@@ -47,7 +48,7 @@ async def search_videos(
     max_duration: int = 30,
 ) -> list[dict]:
     """
-    Search Pexels for stock video clips.
+    Search Pexels for stock video clips (with caching).
 
     Args:
         query: Search keywords.
@@ -59,8 +60,16 @@ async def search_videos(
     Returns:
         List of video metadata dicts with keys: id, url, duration, width, height, download_url.
     """
+    # Check cache first (cache key includes query + orientation)
+    cache_key = f"{query}:{orientation}:{per_page}"
+    cached_results = await get_cached_pexels_search(cache_key)
+
+    if cached_results is not None:
+        logger.info(f"Cache HIT for Pexels search: '{query}'")
+        return cached_results
+
     logger.info(
-        "Pexels search — query='{}' orientation={} count={}",
+        "Cache MISS - Pexels search — query='{}' orientation={} count={}",
         query,
         orientation,
         per_page,
@@ -103,6 +112,10 @@ async def search_videos(
         })
 
     logger.info("Pexels returned {} usable clips for '{}'", len(results), query)
+
+    # Cache results for 24 hours
+    await cache_pexels_search(cache_key, results, ttl=60 * 60 * 24)
+
     return results
 
 
@@ -172,14 +185,21 @@ async def download_video(
 
     logger.info("Downloading clip → {}", output_path.name)
 
+    max_size = 500 * 1024 * 1024  # 500MB limit
+
     async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
         async with client.stream("GET", download_url) as resp:
             resp.raise_for_status()
             bytes_written = 0
             with open(output_path, "wb") as f:
                 async for chunk in resp.aiter_bytes(chunk_size=65536):
-                    f.write(chunk)
                     bytes_written += len(chunk)
+                    if bytes_written > max_size:
+                        raise ValueError(
+                            f"Download exceeds {max_size // (1024*1024)}MB limit "
+                            f"({bytes_written // (1024*1024)}MB downloaded)"
+                        )
+                    f.write(chunk)
 
     logger.info("Clip saved — {} ({:.1f}MB)", output_path.name, bytes_written / 1_048_576)
     return output_path
@@ -209,3 +229,54 @@ async def fetch_clips(
 
     logger.info("Total clips downloaded: {}", len(downloaded))
     return downloaded
+
+
+async def create_placeholder_video(
+    query: str,
+    duration: int = 30,
+    orientation: str = "portrait",
+) -> list[Path]:
+    """
+    Create placeholder video files when Pexels API is unavailable.
+
+    Creates simple black videos with text overlay using FFmpeg.
+
+    Args:
+        query: The search query (used for filename/logging)
+        duration: Duration in seconds
+        orientation: "portrait" (1080x1920) or "landscape" (1920x1080)
+
+    Returns:
+        List of placeholder video file paths
+    """
+    import subprocess
+
+    output_dir = settings.video_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"placeholder_{uuid.uuid4().hex[:12]}.mp4"
+    output_path = output_dir / filename
+
+    logger.warning(f"Creating placeholder video for query: {query}")
+
+    # Adapt resolution to format
+    resolution = "1080x1920" if orientation == "portrait" else "1920x1080"
+
+    command = [
+        "ffmpeg",
+        "-f", "lavfi",
+        "-i", f"color=c=black:s={resolution}:d={duration}",
+        "-vf", f"drawtext=text='Stock footage unavailable':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-y",
+        str(output_path)
+    ]
+
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        logger.info(f"Created placeholder video: {output_path.name}")
+        return [output_path]
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to create placeholder video: {e.stderr}")
+        raise RuntimeError(f"Failed to create placeholder video: {e}")

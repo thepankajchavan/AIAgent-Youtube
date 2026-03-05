@@ -23,6 +23,7 @@ from tenacity import (
 from loguru import logger
 
 from app.core.config import get_settings
+from app.core.encryption import decrypt_string, encrypt_string
 
 settings = get_settings()
 
@@ -40,6 +41,73 @@ CATEGORY_IDS = {
 }
 
 
+def _read_token(token_path: Path) -> str | None:
+    """
+    Read YouTube OAuth token from file (supports encrypted and plaintext).
+
+    Args:
+        token_path: Path to token file (e.g., youtube_token.json)
+
+    Returns:
+        Token JSON string, or None if file doesn't exist
+    """
+    # Check for encrypted token first
+    encrypted_path = token_path.with_suffix('.json.encrypted')
+
+    if encrypted_path.exists():
+        logger.debug(f"Reading encrypted token from {encrypted_path}")
+        try:
+            ciphertext = encrypted_path.read_text()
+            token_json = decrypt_string(ciphertext)
+            return token_json
+        except Exception as e:
+            logger.error(f"Failed to decrypt token: {e}")
+            raise ValueError(
+                f"Failed to decrypt YouTube token at {encrypted_path}. "
+                "Verify ENCRYPTION_KEY is correct."
+            ) from e
+
+    # Fall back to plaintext token
+    if token_path.exists():
+        logger.warning(
+            f"Reading plaintext token from {token_path}. "
+            "Consider encrypting with: python scripts/encrypt_youtube_token.py"
+        )
+        return token_path.read_text()
+
+    return None
+
+
+def _write_token(token_path: Path, token_json: str) -> None:
+    """
+    Write YouTube OAuth token to file (encrypted if encryption key is configured).
+
+    Args:
+        token_path: Path to token file (e.g., youtube_token.json)
+        token_json: Token JSON string
+    """
+    encrypted_path = token_path.with_suffix('.json.encrypted')
+
+    # Try to encrypt if encryption key is configured
+    try:
+        ciphertext = encrypt_string(token_json)
+        encrypted_path.write_text(ciphertext)
+        logger.info(f"Saved encrypted token to {encrypted_path}")
+
+        # Remove plaintext token if it exists
+        if token_path.exists():
+            token_path.unlink()
+            logger.info(f"Removed plaintext token {token_path}")
+
+    except ValueError:
+        # Encryption key not configured, fall back to plaintext
+        logger.warning(
+            "ENCRYPTION_KEY not configured. Saving token as plaintext. "
+            "Generate key with: python scripts/generate_secrets.py"
+        )
+        token_path.write_text(token_json)
+
+
 def _get_authenticated_service():
     """
     Build an authenticated YouTube API service.
@@ -52,8 +120,10 @@ def _get_authenticated_service():
     token_path = Path(settings.youtube_token_file)
     secrets_path = Path(settings.youtube_client_secrets_file)
 
-    if token_path.exists():
-        creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+    # Read token (supports encrypted and plaintext)
+    token_json = _read_token(token_path)
+    if token_json:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
 
     if creds and creds.expired and creds.refresh_token:
         logger.info("Refreshing expired YouTube OAuth token …")
@@ -68,9 +138,8 @@ def _get_authenticated_service():
         flow = InstalledAppFlow.from_client_secrets_file(str(secrets_path), SCOPES)
         creds = flow.run_local_server(port=0)
 
-    # Persist refreshed / new credentials
-    with open(token_path, "w") as f:
-        f.write(creds.to_json())
+    # Persist refreshed / new credentials (encrypted if possible)
+    _write_token(token_path, creds.to_json())
 
     return build("youtube", "v3", credentials=creds)
 
@@ -78,7 +147,7 @@ def _get_authenticated_service():
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=5, min=10, max=120),
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception_type((IOError, OSError, ConnectionError)),
     before_sleep=lambda rs: logger.warning(
         "YouTube upload attempt {} failed, retrying …", rs.attempt_number,
     ),

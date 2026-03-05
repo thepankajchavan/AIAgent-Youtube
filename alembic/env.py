@@ -12,13 +12,16 @@ from app.models.base import Base
 
 # Import every model so Base.metadata knows about them
 from app.models.video import VideoProject  # noqa: F401
+from app.models.telegram_user import TelegramUser  # noqa: F401
 
 # ── Alembic Config ───────────────────────────────────────────
 config = context.config
 settings = get_settings()
 
 # Override the URL from alembic.ini with the real sync URL
-config.set_main_option("sqlalchemy.url", settings.database_url_sync)
+# Escape % symbols to avoid ConfigParser interpolation errors
+escaped_url = settings.database_url_sync.replace("%", "%%")
+config.set_main_option("sqlalchemy.url", escaped_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -62,19 +65,16 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in online mode — supports both sync and async drivers."""
-    if settings.database_url.startswith("postgresql+asyncpg"):
-        asyncio.run(run_async_migrations())
-    else:
-        from sqlalchemy import engine_from_config
-        connectable = engine_from_config(
-            config.get_section(config.config_ini_section, {}),
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
-        )
-        with connectable.connect() as connection:
-            do_run_migrations(connection)
-        connectable.dispose()
+    """Run migrations in online mode — use sync driver for migrations."""
+    from sqlalchemy import engine_from_config
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        do_run_migrations(connection)
+    connectable.dispose()
 
 
 if context.is_offline_mode():

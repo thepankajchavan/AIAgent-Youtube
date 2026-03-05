@@ -1,0 +1,240 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Deploy to Staging (automatic on main branch)
+  # ──────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.yourdomain.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Deploy to staging server
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $STAGING_USER@$STAGING_HOST << 'EOF'
+            set -e
+
+            echo "📦 Pulling latest changes..."
+            cd /var/www/youtube-shorts-automation
+            git pull origin main
+
+            echo "🐳 Pulling Docker images..."
+            docker compose -f docker-compose.prod.yml pull
+
+            echo "🔄 Restarting services..."
+            docker compose -f docker-compose.prod.yml up -d
+
+            echo "📊 Running database migrations..."
+            docker compose -f docker-compose.prod.yml exec -T api alembic upgrade head
+
+            echo "🧹 Cleaning up old images..."
+            docker image prune -f
+
+            echo "✅ Deployment complete!"
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f https://staging.yourdomain.com/health || exit 1
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Staging deployment successful!"
+          # Add Slack/Discord webhook notification here if needed
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Staging deployment failed!"
+          # Add Slack/Discord webhook notification here if needed
+
+  # ──────────────────────────────────────────────────────────────
+  # Deploy to Production (manual trigger or release tags)
+  # ──────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://yourdomain.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+      - name: Create backup before deployment
+        env:
+          PROD_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PROD_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $PROD_USER@$PROD_HOST << 'EOF'
+            set -e
+
+            echo "💾 Creating database backup..."
+            BACKUP_FILE="backup-$(date +%Y%m%d-%H%M%S).sql"
+            docker compose exec -T postgres pg_dump -U postgres content_engine > /backups/$BACKUP_FILE
+            gzip /backups/$BACKUP_FILE
+
+            echo "✅ Backup created: $BACKUP_FILE.gz"
+          EOF
+
+      - name: Deploy to production server
+        env:
+          PROD_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PROD_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $PROD_USER@$PROD_HOST << 'EOF'
+            set -e
+
+            echo "📦 Pulling latest changes..."
+            cd /var/www/youtube-shorts-automation
+            git fetch --tags
+            git checkout ${{ github.ref_name }}
+
+            echo "🐳 Pulling Docker images..."
+            docker compose -f docker-compose.prod.yml pull
+
+            echo "🔄 Restarting services with zero-downtime..."
+            docker compose -f docker-compose.prod.yml up -d --no-deps --build api
+            sleep 5
+            docker compose -f docker-compose.prod.yml up -d
+
+            echo "📊 Running database migrations..."
+            docker compose -f docker-compose.prod.yml exec -T api alembic upgrade head
+
+            echo "🧹 Cleaning up old images..."
+            docker image prune -f
+
+            echo "✅ Production deployment complete!"
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 15
+          curl -f https://yourdomain.com/health || exit 1
+          curl -f https://yourdomain.com/api/v1/system/health || exit 1
+
+      - name: Run smoke tests
+        run: |
+          # Basic smoke tests to verify production deployment
+          curl -f https://yourdomain.com/health
+          curl -f https://yourdomain.com/metrics
+          echo "✅ Smoke tests passed"
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Production deployment successful!"
+          # Add Slack/Discord webhook notification here
+
+      - name: Notify deployment failure and rollback
+        if: failure()
+        env:
+          PROD_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PROD_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          echo "❌ Production deployment failed! Rolling back..."
+
+          ssh -o StrictHostKeyChecking=no $PROD_USER@$PROD_HOST << 'EOF'
+            cd /var/www/youtube-shorts-automation
+
+            # Rollback to previous version
+            git checkout -
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+
+            echo "🔙 Rollback complete"
+          EOF
+
+  # ──────────────────────────────────────────────────────────────
+  # Rollback Job (manual trigger only)
+  # ──────────────────────────────────────────────────────────────
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'rollback'
+    environment:
+      name: production
+
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+      - name: Rollback to previous version
+        env:
+          PROD_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PROD_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $PROD_USER@$PROD_HOST << 'EOF'
+            set -e
+
+            cd /var/www/youtube-shorts-automation
+
+            echo "🔙 Rolling back to previous version..."
+
+            # Checkout previous commit
+            git checkout HEAD~1
+
+            # Restore previous Docker images
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d
+
+            echo "📊 Running migrations (downgrade if needed)..."
+            docker compose -f docker-compose.prod.yml exec -T api alembic current
+
+            echo "✅ Rollback complete!"
+          EOF
+
+      - name: Verify rollback
+        run: |
+          sleep 10
+          curl -f https://yourdomain.com/health || exit 1
+
+      - name: Notify rollback
+        run: |
+          echo "🔙 Production rolled back successfully"

@@ -1,12 +1,20 @@
 """
 Pipeline Orchestrator — chains the full video creation workflow using Celery canvas.
 
-Pipeline flow:
+Pipeline flow (stock_only — default, unchanged):
     1. generate_script_task            (scripts queue)
     2. [generate_audio_task,           (media queue — parallel via chord)
         fetch_visuals_task]
     3. assemble_video_task             (media queue — chord callback)
     4. upload_to_youtube_task          (upload queue)
+
+Pipeline flow (hybrid / ai_only — new):
+    1. generate_script_task            (scripts queue)
+    2. split_scenes_task               (scripts queue — LLM scene planning)
+    3. [generate_audio_task,           (media queue — parallel via chord)
+        generate_visuals_task]         (media queue — hybrid AI + stock)
+    4. assemble_video_task             (media queue — chord callback)
+    5. upload_to_youtube_task          (upload queue)
 
 The orchestrator uses Celery primitives:
     chain → sequential steps
@@ -15,7 +23,7 @@ The orchestrator uses Celery primitives:
 
 from __future__ import annotations
 
-from celery import chain, chord, group, signature
+from celery import chain, chord, group
 from loguru import logger
 
 from app.core.celery_app import celery_app
@@ -31,6 +39,8 @@ def build_pipeline(
     video_format: str = "short",
     provider: str = "openai",
     skip_upload: bool = False,
+    visual_strategy: str = "stock_only",
+    ai_video_provider: str | None = None,
 ) -> chain:
     """
     Build the full Celery pipeline for a video project.
@@ -41,20 +51,24 @@ def build_pipeline(
         video_format: "short" or "long".
         provider: "openai" or "anthropic".
         skip_upload: If True, stop after assembly (useful for testing).
+        visual_strategy: "stock_only", "ai_only", or "hybrid".
+        ai_video_provider: Override for AI provider (uses config default if None).
 
     Returns:
         A Celery chain that can be .apply_async()'d.
     """
     logger.info(
-        "Building pipeline — project={} topic='{}' format={} provider={} skip_upload={}",
+        "Building pipeline — project={} topic='{}' format={} provider={} "
+        "skip_upload={} visual_strategy={}",
         project_id,
         topic,
         video_format,
         provider,
         skip_upload,
+        visual_strategy,
     )
 
-    # Step 1: Script generation
+    # Step 1: Script generation (always first)
     step_script = generate_script_task.s(
         project_id=project_id,
         topic=topic,
@@ -62,24 +76,38 @@ def build_pipeline(
         provider=provider,
     )
 
-    # Step 2: Parallel audio + visual generation (chord)
-    # The chord takes the result of step 1 and fans it out to both tasks,
-    # then collects both results into the callback (step 3).
-    parallel_media = chord(
-        group(
-            generate_audio_task.s(),
-            fetch_visuals_task.s(),
-        ),
-        assemble_video_task.s(),  # Step 3: Assembly (chord callback)
-    )
+    if visual_strategy == "stock_only":
+        # ── ORIGINAL PATH — no scene splitting ──────────────
+        parallel_media = chord(
+            group(
+                generate_audio_task.s(),
+                fetch_visuals_task.s(),
+            ),
+            assemble_video_task.s(),
+        )
+        steps = [step_script, parallel_media]
+    else:
+        # ── AI VIDEO PATH — scene splitting + hybrid visuals ─
+        from app.workers.scene_tasks import (
+            split_scenes_task,
+            generate_visuals_task,
+        )
 
-    if skip_upload:
-        return chain(step_script, parallel_media)
+        step_scene_split = split_scenes_task.s()
+        parallel_media = chord(
+            group(
+                generate_audio_task.s(),
+                generate_visuals_task.s(),
+            ),
+            assemble_video_task.s(),
+        )
+        steps = [step_script, step_scene_split, parallel_media]
 
-    # Step 4: YouTube upload
-    step_upload = upload_to_youtube_task.s()
+    if not skip_upload:
+        step_upload = upload_to_youtube_task.s()
+        steps.append(step_upload)
 
-    return chain(step_script, parallel_media, step_upload)
+    return chain(*steps)
 
 
 @celery_app.task(
@@ -92,6 +120,8 @@ def run_pipeline_task(
     video_format: str = "short",
     provider: str = "openai",
     skip_upload: bool = False,
+    visual_strategy: str = "stock_only",
+    ai_video_provider: str | None = None,
 ) -> str:
     """
     Entry-point task that builds and dispatches the full pipeline.
@@ -105,6 +135,8 @@ def run_pipeline_task(
         video_format=video_format,
         provider=provider,
         skip_upload=skip_upload,
+        visual_strategy=visual_strategy,
+        ai_video_provider=ai_video_provider,
     )
 
     result = pipeline.apply_async()

@@ -19,6 +19,7 @@ from pathlib import Path
 from loguru import logger
 
 from app.core.config import get_settings
+from app.security.sanitizers import validate_file_path
 
 settings = get_settings()
 
@@ -97,22 +98,23 @@ def concatenate_clips(clip_paths: list[Path], output_path: Path) -> Path:
             # FFmpeg concat demuxer needs forward slashes and escaped quotes
             f.write(f"file '{p.as_posix()}'\n")
 
-    _run_ffmpeg(
-        [
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_list),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
-            "-an",
-            str(output_path),
-        ],
-        description="concatenate clips",
-    )
-
-    concat_list.unlink(missing_ok=True)
+    try:
+        _run_ffmpeg(
+            [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list),
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-an",
+                str(output_path),
+            ],
+            description="concatenate clips",
+        )
+    finally:
+        concat_list.unlink(missing_ok=True)
     logger.info("Concatenated {} clips → {}", len(clip_paths), output_path.name)
     return output_path
 
@@ -126,14 +128,11 @@ def overlay_audio(
     Merge a video track with a TTS audio track.
     Trims the video to match audio duration (whichever is shorter).
     """
-    audio_dur = probe_duration(audio_path)
-
     _run_ffmpeg(
         [
             "ffmpeg", "-y",
             "-i", str(video_path),
             "-i", str(audio_path),
-            "-t", str(audio_dur),
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "23",
@@ -177,9 +176,20 @@ def assemble_video(
 
     Returns:
         Path to the assembled final video.
+
+    Raises:
+        ValueError: If paths are invalid or attempt path traversal
     """
     if not clip_paths:
         raise ValueError("No video clips provided for assembly")
+
+    # Validate all input paths to prevent path traversal
+    media_root = settings.media_path
+    for clip_path in clip_paths:
+        validate_file_path(clip_path, media_root)
+
+    audio_path = validate_file_path(audio_path, media_root)
+
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
@@ -223,3 +233,60 @@ def assemble_video(
 
     logger.info("Assembly complete → {}", final_path)
     return final_path
+
+
+def generate_thumbnail(video_path: Path, output_path: Path | None = None, timestamp: float = 0.0) -> Path:
+    """Generate a thumbnail image from a video file.
+
+    Args:
+        video_path: Path to the video file
+        output_path: Optional output path for thumbnail (defaults to video_path with .jpg extension)
+        timestamp: Timestamp in seconds to extract frame from (default: 0.0 for first frame)
+                  If negative, extracts from middle of video
+
+    Returns:
+        Path to the generated thumbnail JPEG
+
+    Example:
+        >>> thumbnail = generate_thumbnail(Path("video.mp4"))  # First frame
+        >>> thumbnail = generate_thumbnail(Path("video.mp4"), timestamp=-1)  # Middle frame
+        >>> thumbnail = generate_thumbnail(Path("video.mp4"), timestamp=5.0)  # At 5 seconds
+    """
+    # Validate input path
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+
+    # Default output path: same directory, same name with .jpg extension
+    if output_path is None:
+        output_path = video_path.with_suffix(".jpg")
+
+    # If timestamp is negative, extract from middle of video
+    if timestamp < 0:
+        duration = probe_duration(video_path)
+        timestamp = duration / 2.0
+        logger.debug("Extracting thumbnail from middle of video ({}s / 2 = {}s)", duration, timestamp)
+
+    # Sanitize output path
+    validate_file_path(output_path, settings.media_path)
+
+    # Extract frame using FFmpeg
+    # -ss: seek to timestamp
+    # -i: input file
+    # -vframes 1: extract only 1 frame
+    # -q:v 2: JPEG quality (2 is high quality)
+    # -vf scale: resize to 1280x720 (good thumbnail size)
+    args = [
+        "ffmpeg",
+        "-y",  # Overwrite output file
+        "-ss", str(timestamp),
+        "-i", str(video_path),
+        "-vframes", "1",
+        "-q:v", "2",
+        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+        str(output_path),
+    ]
+
+    _run_ffmpeg(args, f"generate thumbnail at {timestamp}s")
+
+    logger.info("Thumbnail generated → {} (from {}s)", output_path, timestamp)
+    return output_path

@@ -18,11 +18,15 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
 
+# ── Security & Encryption ─────────────────────────────────────
+cryptography==42.0.5
+
 # ── HTTP Client ───────────────────────────────────────────────
-httpx==0.28.1
+httpx~=0.25.2
 
 # ── Retry / Resilience ───────────────────────────────────────
 tenacity==9.0.0
+pybreaker==1.2.0
 
 # ── Logging ───────────────────────────────────────────────────
 loguru==0.7.3
@@ -42,3 +46,11 @@ anthropic==0.42.0
 
 # ── TTS ──────────────────────────────────────────────────────
 elevenlabs==1.50.5
+
+# ── Telegram Bot ─────────────────────────────────────────────
+python-telegram-bot==20.7
+
+# ── Monitoring & Observability ───────────────────────────────
+prometheus-client==0.20.0
+prometheus-fastapi-instrumentator==7.0.0
+flower==2.0.1

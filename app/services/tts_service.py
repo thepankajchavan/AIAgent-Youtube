@@ -93,11 +93,11 @@ async def generate_speech(
         model_id,
     )
 
+    bytes_written = 0
     async with httpx.AsyncClient(timeout=120.0) as client:
         async with client.stream("POST", url, json=payload, headers=headers) as resp:
             resp.raise_for_status()
 
-            bytes_written = 0
             with open(output_path, "wb") as f:
                 async for chunk in resp.aiter_bytes(chunk_size=8192):
                     f.write(chunk)

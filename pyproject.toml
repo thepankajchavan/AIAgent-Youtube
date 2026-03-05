@@ -1,0 +1,51 @@
+[project]
+name = "youtube-shorts-automation"
+version = "1.0.0"
+description = "AI-Powered YouTube Shorts Generation via Telegram Bot"
+requires-python = ">=3.12"
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.mypy_cache
+  | __pycache__
+  | alembic
+)/
+'''
+
+[tool.ruff]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = ["E501"]  # Line too long (handled by black)
+line-length = 100
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "alembic",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["tests/", "alembic/"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "*/tests/*",
+    "*/alembic/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false

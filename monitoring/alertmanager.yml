@@ -1,0 +1,119 @@
+# Alertmanager Configuration for YouTube Shorts Automation
+
+global:
+  # Email configuration (configure SMTP server)
+  smtp_from: 'alerts@yourdomain.com'
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_auth_username: 'your-email@gmail.com'
+  smtp_auth_password: 'your-app-password'
+  smtp_require_tls: true
+
+  # Slack webhook (optional - configure if using Slack)
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+
+# Templates for alert notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route configuration
+route:
+  # Default receiver
+  receiver: 'default-email'
+
+  # Group alerts by these labels
+  group_by: ['alertname', 'severity']
+
+  # Wait time before sending initial notification
+  group_wait: 30s
+
+  # Wait time before sending notifications for new alerts in the same group
+  group_interval: 5m
+
+  # Minimum time between two notifications for the same alert
+  repeat_interval: 4h
+
+  # Routes for different severity levels
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+
+    # Warning alerts - less urgent
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 1m
+      group_interval: 5m
+      repeat_interval: 12h
+
+# Receivers (notification channels)
+receivers:
+  # Default email receiver
+  - name: 'default-email'
+    email_configs:
+      - to: 'admin@yourdomain.com'
+        headers:
+          Subject: '[YouTube Automation] {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>{{ .GroupLabels.alertname }}</h2>
+          <p><strong>Severity:</strong> {{ .CommonLabels.severity }}</p>
+          <p><strong>Summary:</strong> {{ .CommonAnnotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .CommonAnnotations.description }}</p>
+          <p><strong>Time:</strong> {{ .StartsAt }}</p>
+
+  # Critical alerts (email + optional Slack)
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'admin@yourdomain.com,oncall@yourdomain.com'
+        headers:
+          Subject: '🚨 CRITICAL: [YouTube Automation] {{ .GroupLabels.alertname }}'
+        html: |
+          <h1 style="color: red;">🚨 CRITICAL ALERT</h1>
+          <h2>{{ .GroupLabels.alertname }}</h2>
+          <p><strong>Severity:</strong> {{ .CommonLabels.severity }}</p>
+          <p><strong>Summary:</strong> {{ .CommonAnnotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .CommonAnnotations.description }}</p>
+          <p><strong>Time:</strong> {{ .StartsAt }}</p>
+          <p><strong>Action Required:</strong> Immediate investigation needed</p>
+
+    # Slack notifications (uncomment and configure if needed)
+    # slack_configs:
+    #   - channel: '#alerts-critical'
+    #     title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+    #     text: |
+    #       *Summary:* {{ .CommonAnnotations.summary }}
+    #       *Description:* {{ .CommonAnnotations.description }}
+    #       *Severity:* {{ .CommonLabels.severity }}
+    #     send_resolved: true
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'admin@yourdomain.com'
+        headers:
+          Subject: '⚠️ WARNING: [YouTube Automation] {{ .GroupLabels.alertname }}'
+        html: |
+          <h2 style="color: orange;">⚠️ WARNING</h2>
+          <h3>{{ .GroupLabels.alertname }}</h3>
+          <p><strong>Summary:</strong> {{ .CommonAnnotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .CommonAnnotations.description }}</p>
+          <p><strong>Time:</strong> {{ .StartsAt }}</p>
+
+# Inhibition rules (suppress alerts when other alerts are firing)
+inhibit_rules:
+  # Suppress warning alerts if critical alert for same service is active
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']
+
+  # Suppress individual worker alerts if no workers online
+  - source_match:
+      alertname: 'NoWorkersOnline'
+    target_match_re:
+      alertname: '.*Worker.*'
