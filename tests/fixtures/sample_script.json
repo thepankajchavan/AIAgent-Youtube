@@ -1,6 +1,30 @@
 {
-  "title": "5 Amazing Facts About Space",
-  "script": "Did you know that a day on Venus is longer than a year on Venus? Let me blow your mind with 5 incredible space facts. Number 1: Venus rotates so slowly that it takes 243 Earth days to complete one rotation, but only 225 days to orbit the Sun. Number 2: If you could drive a car upwards at 60 mph, you'd reach space in just one hour. Number 3: The footprints on the Moon will be there for 100 million years because there's no wind to blow them away. Number 4: One million Earths could fit inside the Sun. And Number 5: There are more stars in the universe than grains of sand on all the beaches on Earth. Which fact amazed you the most? Comment below! #Space #ScienceFacts #Shorts",
-  "tags": ["space", "science", "facts", "astronomy", "shorts", "educational", "amazing"],
-  "description": "Mind-blowing space facts that will make you see the universe differently!"
+  "title": "Neutron Stars Are Terrifying",
+  "script": "You won't believe what is hiding in the deepest parts of space right now.\n\nA single teaspoon of a neutron star weighs over six billion tons. That is more than every building and every car on Earth combined.\n\nScientists discovered these objects spin up to seven hundred times per second. Imagine something heavier than a mountain rotating faster than a blender blade.\n\nThe gravity is so intense that a falling marshmallow would hit the surface with the force of a thousand nuclear bombs.\n\nAnd billions of these cosmic monsters are scattered across our galaxy right now.",
+  "scenes": [
+    {
+      "narration": "You won't believe what is hiding in the deepest parts of space right now.",
+      "search_keywords": ["deep space stars nebula", "galaxy dark cosmos"]
+    },
+    {
+      "narration": "A single teaspoon of a neutron star weighs over six billion tons. That is more than every building and every car on Earth combined.",
+      "search_keywords": ["neutron star glowing", "city skyline aerial view"]
+    },
+    {
+      "narration": "Scientists discovered these objects spin up to seven hundred times per second. Imagine something heavier than a mountain rotating faster than a blender blade.",
+      "search_keywords": ["spinning top slow motion", "mountain landscape aerial"]
+    },
+    {
+      "narration": "The gravity is so intense that a falling marshmallow would hit the surface with the force of a thousand nuclear bombs.",
+      "search_keywords": ["nuclear explosion", "gravity space simulation"]
+    },
+    {
+      "narration": "And billions of these cosmic monsters are scattered across our galaxy right now.",
+      "search_keywords": ["milky way galaxy timelapse", "stars spinning night sky"]
+    }
+  ],
+  "tags": ["space", "science", "facts", "neutron star", "astronomy", "universe", "physics", "didyouknow", "mindblown", "spacefacts"],
+  "hashtags": ["#Shorts", "#Space", "#Science", "#NeutronStar", "#Facts", "#MindBlown"],
+  "category": "science",
+  "description": "Discover the terrifying power of neutron stars! These cosmic monsters pack more mass than the Sun into a city-sized sphere, with gravity so extreme it defies imagination."
 }

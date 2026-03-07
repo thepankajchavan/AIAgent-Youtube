@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from app.core.database import get_async_session
 from app.core.redis_client import get_redis_client
-from app.models.video_project import ProjectStatus, VideoProject
+from app.models.video import VideoStatus as ProjectStatus, VideoProject
 
 
 class DeadLetterQueue:
@@ -35,7 +35,8 @@ class DeadLetterQueue:
         kwargs: dict,
         exception: Exception,
         traceback_str: str,
-        project_id: int | None = None,
+        project_id: str | None = None,
+        update_project_status: bool = True,
     ) -> None:
         """
         Add a permanently failed task to the DLQ.
@@ -47,7 +48,9 @@ class DeadLetterQueue:
             kwargs: Task keyword arguments
             exception: Exception that caused the failure
             traceback_str: Full traceback string
-            project_id: Associated VideoProject ID (if applicable)
+            project_id: Associated VideoProject UUID string (if applicable)
+            update_project_status: Whether to mark project FAILED in DB.
+                Set False when the worker already called _mark_project_failed().
         """
         redis = await get_redis_client()
 
@@ -60,7 +63,7 @@ class DeadLetterQueue:
             "exception_type": type(exception).__name__,
             "exception_message": str(exception),
             "traceback": traceback_str,
-            "project_id": project_id,
+            "project_id": str(project_id) if project_id else "",
             "failed_at": datetime.now(UTC).isoformat(),
             "retry_count": 0,
             "status": "failed",
@@ -82,11 +85,11 @@ class DeadLetterQueue:
         )
 
         # Update project status if applicable
-        if project_id:
+        if project_id and update_project_status:
             await cls._update_project_status(project_id, str(exception))
 
     @classmethod
-    async def _update_project_status(cls, project_id: int, error_message: str) -> None:
+    async def _update_project_status(cls, project_id: str, error_message: str) -> None:
         """Mark project as permanently failed in database."""
         async for session in get_async_session():
             try:

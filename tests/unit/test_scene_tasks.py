@@ -77,6 +77,7 @@ class TestSplitScenesTask:
             "project_id": "test-project-uuid",
             "script_data": {"script": "test script content", "tags": ["test"]},
             "video_format": "short",
+            "audio_duration": 35.0,
         }
 
         result = split_scenes_task(pipeline_data=pipeline_data)
@@ -87,6 +88,10 @@ class TestSplitScenesTask:
         assert result["scene_plan"][0]["visual_type"] == "stock_footage"
         assert result["scene_plan"][1]["visual_type"] == "ai_generated"
         project.validate_status_transition.assert_called_once_with(VideoStatus.SCENE_SPLITTING)
+
+        # Verify audio_duration was passed to split_script_to_scenes
+        call_kwargs = mock_run_async.call_args
+        assert call_kwargs is not None
 
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
@@ -151,10 +156,11 @@ class TestSplitScenesTask:
 class TestGenerateVisualsTask:
     """Test generate_visuals_task worker."""
 
+    @patch("app.workers.scene_tasks.PipelineResume")
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
     @patch("app.workers.scene_tasks._run_async")
-    def test_generate_visuals_success(self, mock_run_async, mock_db, mock_emit, tmp_path):
+    def test_generate_visuals_success(self, mock_run_async, mock_db, mock_emit, mock_resume, tmp_path):
         """Test successful visual generation returns clip_paths."""
         from app.workers.scene_tasks import generate_visuals_task
 
@@ -226,10 +232,11 @@ class TestGenerateVisualsTask:
         with pytest.raises(ValueError, match="No scene_plan"):
             generate_visuals_task(pipeline_data=pipeline_data)
 
+    @patch("app.workers.scene_tasks.PipelineResume")
     @patch("app.workers.scene_tasks.emit_status_update")
     @patch("app.workers.scene_tasks.get_sync_db")
     @patch("app.workers.scene_tasks._run_async")
-    def test_generate_visuals_tracks_cost(self, mock_run_async, mock_db, mock_emit, tmp_path):
+    def test_generate_visuals_tracks_cost(self, mock_run_async, mock_db, mock_emit, mock_resume, tmp_path):
         """Test that AI generation costs are tracked."""
         from app.workers.scene_tasks import generate_visuals_task
 

@@ -356,6 +356,83 @@ class TestVideoUpload:
         call_kwargs = mock_youtube.videos().insert.call_args.kwargs
         assert call_kwargs["body"]["status"]["selfDeclaredMadeForKids"] is False
 
+    def test_upload_video_appends_hashtags_to_description(self, mocker, tmp_path):
+        """Test that hashtags are appended to the description."""
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"data")
+
+        mock_youtube = MagicMock()
+        mock_request = MagicMock()
+        mock_request.next_chunk = MagicMock(return_value=(None, {"id": "abc"}))
+        mock_youtube.videos().insert.return_value = mock_request
+
+        mocker.patch(
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
+        )
+
+        upload_video(
+            file_path=video_path,
+            title="Test",
+            description="Original description.",
+            tags=["test"],
+            hashtags=["#Shorts", "#Science", "#Facts"],
+        )
+
+        call_kwargs = mock_youtube.videos().insert.call_args.kwargs
+        desc = call_kwargs["body"]["snippet"]["description"]
+        assert desc.startswith("Original description.")
+        assert "#Shorts #Science #Facts" in desc
+
+    def test_upload_video_no_hashtags(self, mocker, tmp_path):
+        """Test that description is unchanged when no hashtags provided."""
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"data")
+
+        mock_youtube = MagicMock()
+        mock_request = MagicMock()
+        mock_request.next_chunk = MagicMock(return_value=(None, {"id": "abc"}))
+        mock_youtube.videos().insert.return_value = mock_request
+
+        mocker.patch(
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
+        )
+
+        upload_video(
+            file_path=video_path,
+            title="Test",
+            description="Just a description.",
+            tags=["test"],
+        )
+
+        call_kwargs = mock_youtube.videos().insert.call_args.kwargs
+        desc = call_kwargs["body"]["snippet"]["description"]
+        assert desc == "Just a description."
+
+    def test_upload_video_public_privacy(self, mocker, tmp_path):
+        """Test that public privacy status is set correctly."""
+        video_path = tmp_path / "video.mp4"
+        video_path.write_bytes(b"data")
+
+        mock_youtube = MagicMock()
+        mock_request = MagicMock()
+        mock_request.next_chunk = MagicMock(return_value=(None, {"id": "abc"}))
+        mock_youtube.videos().insert.return_value = mock_request
+
+        mocker.patch(
+            "app.services.youtube_service._get_authenticated_service", return_value=mock_youtube
+        )
+
+        upload_video(
+            file_path=video_path,
+            title="Public Video",
+            description="Test",
+            tags=["test"],
+            privacy_status="public",
+        )
+
+        call_kwargs = mock_youtube.videos().insert.call_args.kwargs
+        assert call_kwargs["body"]["status"]["privacyStatus"] == "public"
+
 
 class TestAuthenticatedService:
     """Test OAuth authentication flow."""

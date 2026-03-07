@@ -12,7 +12,9 @@ Handles:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -43,6 +45,45 @@ def _run_ffmpeg(args: list[str], description: str) -> subprocess.CompletedProces
     return result
 
 
+def normalize_audio(input_path: Path) -> Path:
+    """Normalize audio loudness to -14 LUFS (YouTube's standard).
+
+    Uses FFmpeg's loudnorm filter for EBU R128 loudness normalization.
+    Replaces the file in-place via a temporary file.
+
+    Args:
+        input_path: Path to the MP3/audio file.
+
+    Returns:
+        The same input_path (file is replaced in-place).
+    """
+    temp_path = input_path.with_suffix(".norm.mp3")
+
+    _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-af",
+            "loudnorm=I=-14:TP=-1.0:LRA=11",
+            "-ar",
+            "44100",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
+            str(temp_path),
+        ],
+        description="normalize audio loudness",
+    )
+
+    # Replace original with normalized version
+    temp_path.replace(input_path)
+    logger.info("Audio normalized to -14 LUFS — {}", input_path.name)
+    return input_path
+
+
 def probe_duration(file_path: Path) -> float:
     """Get the duration of a media file in seconds."""
     result = _run_ffmpeg(
@@ -69,7 +110,11 @@ def scale_and_pad(
     width: int,
     height: int,
 ) -> Path:
-    """Scale a clip to fit inside target dimensions with black padding."""
+    """Scale a clip to fit inside target dimensions with black padding.
+
+    Uses near-lossless CRF to preserve quality for intermediate files
+    that will be concatenated and re-encoded in the final pass.
+    """
     _run_ffmpeg(
         [
             "ffmpeg",
@@ -86,7 +131,9 @@ def scale_and_pad(
             "-preset",
             "fast",
             "-crf",
-            "23",
+            "10",
+            "-pix_fmt",
+            "yuv420p",
             "-an",  # strip audio from B-roll
             str(output_path),
         ],
@@ -118,11 +165,7 @@ def concatenate_clips(clip_paths: list[Path], output_path: Path) -> Path:
                 "-i",
                 str(concat_list),
                 "-c:v",
-                "libx264",
-                "-preset",
-                "fast",
-                "-crf",
-                "23",
+                "copy",  # stream copy — no re-encode since clips are same codec/resolution
                 "-an",
                 str(output_path),
             ],
@@ -134,6 +177,56 @@ def concatenate_clips(clip_paths: list[Path], output_path: Path) -> Path:
     return output_path
 
 
+def _concat_with_audio(clip_paths: list[Path], output_path: Path) -> Path:
+    """Concatenate clips that each have audio tracks (e.g. narrated + outro).
+
+    Uses FFmpeg's filter_complex concat filter (not the concat demuxer)
+    so inputs with different codecs/parameters are handled correctly.
+    """
+    n = len(clip_paths)
+
+    # Build input args
+    input_args: list[str] = []
+    for p in clip_paths:
+        input_args.extend(["-i", str(p)])
+
+    # Build filter_complex: [0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]
+    filter_parts = "".join(f"[{i}:v][{i}:a]" for i in range(n))
+    filter_complex = f"{filter_parts}concat=n={n}:v=1:a=1[outv][outa]"
+
+    _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-y",
+            *input_args,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[outv]",
+            "-map",
+            "[outa]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "256k",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ],
+        description="concatenate with audio (filter)",
+    )
+    logger.info("Concatenated {} clips (with audio) → {}", n, output_path.name)
+    return output_path
+
+
 def overlay_audio(
     video_path: Path,
     audio_path: Path,
@@ -141,35 +234,61 @@ def overlay_audio(
 ) -> Path:
     """
     Merge a video track with a TTS audio track.
-    Trims the video to match audio duration (whichever is shorter).
+
+    If video is shorter than audio, the video loops to fill the narration.
+    If video is longer, audio is padded with silence to match video length.
     """
-    _run_ffmpeg(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(video_path),
-            "-i",
-            str(audio_path),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "23",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
-            "-shortest",
-            str(output_path),
-        ],
-        description="overlay audio",
-    )
+    video_dur = probe_duration(video_path)
+    audio_dur = probe_duration(audio_path)
+
+    if video_dur >= audio_dur:
+        # Video is long enough — pad audio with silence to match
+        audio_filter = f"apad=whole_dur={video_dur}"
+        duration_flag = ["-t", str(video_dur)]
+        loop_flag: list[str] = []
+    else:
+        # Audio is longer — loop video to fill entire narration
+        audio_filter = None
+        duration_flag = ["-t", str(audio_dur)]
+        loop_flag = ["-stream_loop", "-1"]
+
+    args = [
+        "ffmpeg",
+        "-y",
+        *loop_flag,
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.2",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "256k",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+    ]
+
+    if audio_filter:
+        args.extend(["-af", audio_filter])
+
+    args.extend(duration_flag)
+    args.extend(["-movflags", "+faststart", str(output_path)])
+
+    _run_ffmpeg(args, description="overlay audio")
 
     logger.info(
         "Audio overlaid — video={} audio={} → {}",
@@ -180,24 +299,93 @@ def overlay_audio(
     return output_path
 
 
+def burn_captions(
+    video_path: Path,
+    ass_path: Path,
+    output_path: Path,
+) -> Path:
+    """
+    Burn ASS subtitles into a video using FFmpeg's ass filter.
+
+    Args:
+        video_path: Path to the input video (e.g. narrated.mp4).
+        ass_path: Path to the ASS subtitle file.
+        output_path: Path for the captioned output video.
+
+    Returns:
+        Path to the captioned video.
+    """
+    # FFmpeg's ass filter on Windows can't handle drive-letter colons (C:) in paths.
+    # The \: escaping doesn't work on Windows FFmpeg builds.
+    # Fix: copy ASS to temp dir, run FFmpeg with cwd=tmp_dir, use bare filename.
+    tmp_dir = tempfile.mkdtemp(prefix="ff_ass_")
+    try:
+        tmp_ass = Path(tmp_dir) / "captions.ass"
+        shutil.copy2(ass_path, tmp_ass)
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path.resolve()),
+            "-vf",
+            "ass=captions.ass",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-c:a",
+            "copy",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path.resolve()),
+        ]
+        logger.debug("FFmpeg [burn captions]: {}", " ".join(cmd))
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            cwd=tmp_dir,
+        )
+        if result.returncode != 0:
+            logger.error("FFmpeg FAILED [burn captions]:\n{}", result.stderr[-2000:])
+            raise RuntimeError(
+                f"FFmpeg 'burn captions' failed: {result.stderr[-500:]}"
+            )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    logger.info("Captions burned — {} → {}", video_path.name, output_path.name)
+    return output_path
+
+
 def assemble_video(
     clip_paths: list[Path],
     audio_path: Path,
     video_format: str = "short",
     project_id: str | None = None,
+    caption_ass_path: Path | None = None,
 ) -> Path:
     """
     Full assembly pipeline:
       1. Scale/pad each clip to target resolution
       2. Concatenate all clips
       3. Overlay TTS audio
-      4. Return path to final output MP4
+      4. Burn captions (if ASS file provided)
+      5. Append outro
+      6. Return path to final output MP4
 
     Args:
         clip_paths: Downloaded B-roll clip file paths.
         audio_path: TTS audio file path.
         video_format: "short" (9:16) or "long" (16:9).
         project_id: Optional UUID for naming the output.
+        caption_ass_path: Optional ASS subtitle file for caption burn-in.
 
     Returns:
         Path to the assembled final video.
@@ -235,21 +423,70 @@ def assemble_video(
         h,
     )
 
-    # 1. Scale each clip
+    # 1. Scale each AI clip (strips audio — TTS replaces it)
     scaled_paths: list[Path] = []
     for i, clip in enumerate(clip_paths):
         scaled = work_dir / f"scaled_{i:03d}.mp4"
         scale_and_pad(clip, scaled, w, h)
         scaled_paths.append(scaled)
 
-    # 2. Concatenate
+    # 2. Concatenate AI clips only (no audio)
     concat_path = work_dir / "concat.mp4"
     concatenate_clips(scaled_paths, concat_path)
 
-    # 3. Overlay audio
+    # 3. Overlay TTS audio on AI content only
+    narrated_path = work_dir / "narrated.mp4"
+    overlay_audio(concat_path, audio_path, narrated_path)
+
+    # 4. Burn captions if ASS subtitle file provided
+    if caption_ass_path is not None:
+        captioned_path = work_dir / "captioned.mp4"
+        burn_captions(narrated_path, caption_ass_path, captioned_path)
+        narrated_path = captioned_path  # downstream uses captioned version
+
+    # 5. Append outro clip with its own audio (like/subscribe)
+    outro_path = Path(settings.outro_video_path).resolve()
     final_name = f"final_{tag}.mp4"
     final_path = output_dir / final_name
-    overlay_audio(concat_path, audio_path, final_path)
+
+    if video_format == "short" and outro_path.exists():
+        scaled_outro = work_dir / "scaled_outro_av.mp4"
+        # Scale outro but KEEP its original audio
+        _run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(outro_path),
+                "-vf",
+                (
+                    f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                    f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black"
+                ),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "10",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "256k",
+                "-pix_fmt",
+                "yuv420p",
+                str(scaled_outro),
+            ],
+            description="scale outro (with audio)",
+        )
+        logger.info("Outro clip scaled with audio — {}", outro_path.name)
+
+        # Concatenate narrated content + outro (both have audio)
+        _concat_with_audio([narrated_path, scaled_outro], final_path)
+        logger.info("Narrated + outro joined → {}", final_path.name)
+    else:
+        # No outro — narrated video is the final output
+        shutil.move(str(narrated_path), str(final_path))
 
     # Cleanup intermediate files
     for f in work_dir.iterdir():

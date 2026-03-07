@@ -1,0 +1,42 @@
+[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.88,Default,,0,0,0,,RIGHT NOW THE
+Dialogue: 0,0:00:00.88,0:00:02.20,Default,,0,0,0,,UAE IS INTERCEPTING
+Dialogue: 0,0:00:02.20,0:00:03.08,Default,,0,0,0,,WAVES OF IRANIAN
+Dialogue: 0,0:00:03.08,0:00:04.30,Default,,0,0,0,,MISSILES AND DRONES
+Dialogue: 0,0:00:04.78,0:00:05.60,Default,,0,0,0,,JUST YESTERDAY THEY
+Dialogue: 0,0:00:05.60,0:00:06.72,Default,,0,0,0,,STOPPED SIX BALLISTIC
+Dialogue: 0,0:00:06.72,0:00:08.42,Default,,0,0,0,,MISSILES AND 125
+Dialogue: 0,0:00:08.42,0:00:09.32,Default,,0,0,0,,DRONES AIMED AT
+Dialogue: 0,0:00:09.32,0:00:10.08,Default,,0,0,0,,THEIR SKIES
+Dialogue: 0,0:00:11.18,0:00:11.62,Default,,0,0,0,,MEANWHILE
+Dialogue: 0,0:00:12.08,0:00:13.06,Default,,0,0,0,,DUBAI'S AIRPORT IS
+Dialogue: 0,0:00:13.06,0:00:13.78,Default,,0,0,0,,IN CHAOS
+Dialogue: 0,0:00:14.16,0:00:15.04,Default,,0,0,0,,WITH FLIGHTS GROUNDED
+Dialogue: 0,0:00:15.04,0:00:16.32,Default,,0,0,0,,AND TRAVELERS STRANDED
+Dialogue: 0,0:00:16.32,0:00:17.08,Default,,0,0,0,,WORLDWIDE
+Dialogue: 0,0:00:17.72,0:00:18.54,Default,,0,0,0,,THE CONFLICT HAS
+Dialogue: 0,0:00:18.54,0:00:19.60,Default,,0,0,0,,EVEN SPARKED MASSIVE
+Dialogue: 0,0:00:19.60,0:00:20.56,Default,,0,0,0,,FIRES AT KEY
+Dialogue: 0,0:00:20.56,0:00:21.64,Default,,0,0,0,,OIL ZONES LIKE
+Dialogue: 0,0:00:21.64,0:00:22.72,Default,,0,0,0,,FUJAIRAH
+Dialogue: 0,0:00:23.16,0:00:24.36,Default,,0,0,0,,AS TENSIONS RISE
+Dialogue: 0,0:00:25.14,0:00:25.90,Default,,0,0,0,,ITALY SENDS AIR
+Dialogue: 0,0:00:25.90,0:00:26.64,Default,,0,0,0,,DEFENSE AID
+Dialogue: 0,0:00:27.26,0:00:27.78,Default,,0,0,0,,MARKING A GLOBAL
+Dialogue: 0,0:00:27.78,0:00:28.76,Default,,0,0,0,,RESPONSE TO THIS
+Dialogue: 0,0:00:28.76,0:00:30.02,Default,,0,0,0,,ESCALATING CRISIS FOR
+Dialogue: 0,0:00:30.02,0:00:30.04,Default,,0,0,0,,MORE UN VIDEOS
+Dialogue: 0,0:00:30.04,0:00:30.06,Default,,0,0,0,,VISIT WWW UN
+Dialogue: 0,0:00:30.06,0:00:30.06,Default,,0,0,0,,ORG

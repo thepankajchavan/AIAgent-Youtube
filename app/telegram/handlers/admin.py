@@ -3,6 +3,7 @@
 import httpx
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.helpers import escape_markdown
 
 from app.core.config import get_settings
 
@@ -44,7 +45,8 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     except Exception as exc:
-        await update.message.reply_text(f"❌ Failed to cancel: {exc}")
+        safe_err = escape_markdown(str(exc), version=1)
+        await update.message.reply_text(f"❌ Failed to cancel: {safe_err}")
 
 
 async def retry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,6 +76,8 @@ async def retry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif exc.response.status_code == 404:
             await update.message.reply_text("❌ Project not found.")
         else:
-            await update.message.reply_text(f"❌ Error: {exc.response.text}")
+            safe_err = escape_markdown(str(exc.response.text), version=1)
+            await update.message.reply_text(f"❌ Error: {safe_err}")
     except Exception as exc:
-        await update.message.reply_text(f"❌ Error: {exc}")
+        safe_err = escape_markdown(str(exc), version=1)
+        await update.message.reply_text(f"❌ Error: {safe_err}")

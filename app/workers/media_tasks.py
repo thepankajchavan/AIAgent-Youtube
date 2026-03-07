@@ -8,19 +8,24 @@ then feed their results into the assembly step.
 from __future__ import annotations
 
 import asyncio
+import traceback
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 
 from celery import Task
 from loguru import logger
 
 from app.core.celery_app import celery_app
+from app.core.dlq import DeadLetterQueue
 from app.models.video import VideoProject, VideoStatus
 from app.services.ai_video_service import generate_all_visuals, split_script_to_scenes
+from app.services.media_service import probe_duration
 from app.services.tts_service import generate_speech
 from app.services.visual_service import fetch_clips  # Pexels (stock footage) - fallback only
 from app.workers.db import get_sync_db
 from app.workers.events import emit_status_update
+from app.workers.resume_helper import PipelineResume
 
 
 def _run_async(coro):
@@ -47,6 +52,8 @@ def _mark_project_failed(project_id: str, error_message: str) -> None:
     max_retries=3,
     default_retry_delay=30,
     acks_late=True,
+    time_limit=300,
+    soft_time_limit=270,
 )
 def generate_audio_task(
     self: Task,
@@ -101,36 +108,67 @@ def generate_audio_task(
                 )
             )
 
-            # 4. Persist result
-            project.audio_path = str(audio_path)
-            # Commit happens automatically on context exit
+            # 4. Probe audio duration for downstream sync checks
+            audio_duration = probe_duration(audio_path)
+            logger.info(
+                "Audio generated — project={} path={} duration={:.1f}s chars={}",
+                project_id,
+                audio_path,
+                audio_duration,
+                len(script_text),
+            )
 
-            logger.info("Audio generated — project={} path={}", project_id, audio_path)
+            # 5. Persist result
+            project.audio_path = str(audio_path)
+
+            # Mark step completed for resume tracking
+            PipelineResume.mark_step_completed(project, "audio")
+            PipelineResume.mark_artifact_available(project, "audio", audio_path)
+            # Commit happens automatically on context exit
 
             return {
                 **pipeline_data,
                 "audio_path": str(audio_path),
+                "audio_duration": audio_duration,
             }
 
         except Exception as exc:
             logger.error("TTS failed for project={}: {}", project_id, exc)
 
-            if project is not None:
-                emit_status_update(
-                    project_id=project_id,
-                    status="FAILED",
-                    telegram_user_id=project.telegram_user_id,
-                    telegram_chat_id=project.telegram_chat_id,
-                    telegram_message_id=project.telegram_message_id,
-                    extra={"error": str(exc)},
-                )
-
             if self.request.retries >= self.max_retries:
+                if project is not None:
+                    emit_status_update(
+                        project_id=project_id,
+                        status="FAILED",
+                        telegram_user_id=project.telegram_user_id,
+                        telegram_chat_id=project.telegram_chat_id,
+                        telegram_message_id=project.telegram_message_id,
+                        extra={"error": str(exc)},
+                    )
                 _mark_project_failed(
                     project_id,
                     f"TTS generation failed after {self.max_retries + 1} attempts: {exc}",
                 )
+                try:
+                    asyncio.run(DeadLetterQueue.add_failed_task(
+                        task_id=self.request.id, task_name=self.name,
+                        args=self.request.args, kwargs=self.request.kwargs,
+                        exception=exc, traceback_str=traceback.format_exc(),
+                        project_id=project_id, update_project_status=False,
+                    ))
+                except Exception as dlq_exc:
+                    logger.error("Failed to add task to DLQ: {}", dlq_exc)
                 raise
+
+            if project is not None:
+                emit_status_update(
+                    project_id=project_id,
+                    status="AUDIO_GENERATING",
+                    telegram_user_id=project.telegram_user_id,
+                    telegram_chat_id=project.telegram_chat_id,
+                    telegram_message_id=project.telegram_message_id,
+                    extra={"retry": self.request.retries + 1},
+                )
             raise self.retry(exc=exc)
 
 
@@ -144,6 +182,8 @@ def generate_audio_task(
     max_retries=3,
     default_retry_delay=30,
     acks_late=True,
+    time_limit=600,
+    soft_time_limit=540,
 )
 def fetch_visuals_task(
     self: Task,
@@ -218,7 +258,7 @@ def fetch_visuals_task(
                         script=full_script,
                         video_format=video_format,
                         provider=provider,
-                        visual_strategy=settings.ai_video_strategy,
+                        visual_strategy=project.visual_strategy,
                     )
                 )
 
@@ -241,6 +281,10 @@ def fetch_visuals_task(
                 )
                 stock_count = sum(1 for s in scenes if s.provider_used == "pexels")
 
+                # Persist cost and scene plan to DB
+                project.ai_video_cost = total_cost
+                project.scene_plan = {"scenes": [asdict(s) for s in scenes]}
+
                 logger.info(
                     "Visuals generated — project={} clips={} (AI:{}, stock:{}, cost:${:.2f})",
                     project_id,
@@ -252,21 +296,40 @@ def fetch_visuals_task(
 
             else:
                 # ═══ STOCK FOOTAGE MODE (PEXELS) ═══
-                # COMMENTED OUT - Enable by setting AI_VIDEO_ENABLED=false in .env
                 logger.info("Using stock footage from Pexels")
 
-                # Use tags as search queries; fall back to topic keywords
-                tags = script_data.get("tags", [])
-                queries = tags[:4] if tags else [script_data.get("title", "nature")]
                 orientation = "portrait" if video_format == "short" else "landscape"
 
-                logger.info("Pexels search — queries={} orientation={}", queries, orientation)
+                # Use per-scene search keywords for precise stock footage matching
+                scenes = script_data.get("scenes", [])
+                if scenes:
+                    queries = []
+                    for scene in scenes:
+                        keywords = scene.get("search_keywords", [])
+                        if keywords:
+                            queries.append(keywords[0])  # Primary keyword per scene
+                    clips_per_q = 1  # 1 clip per scene = 4-5 clips total
+                else:
+                    # Fallback to tags (legacy script format)
+                    tags = script_data.get("tags", [])
+                    queries = tags[:4] if tags else [script_data.get("title", "nature")]
+                    clips_per_q = 2
+
+                if not queries:
+                    queries = [script_data.get("title", "nature")]
+
+                logger.info(
+                    "Pexels search — queries={} orientation={} clips_per_q={}",
+                    queries,
+                    orientation,
+                    clips_per_q,
+                )
 
                 clip_paths: list[Path] = _run_async(
                     fetch_clips(
                         queries=queries,
                         orientation=orientation,
-                        clips_per_query=2,
+                        clips_per_query=clips_per_q,
                     )
                 )
 
@@ -281,6 +344,9 @@ def fetch_visuals_task(
             # 4. Persist result (store first clip path as reference)
             if clip_paths_str:
                 project.video_path = clip_paths_str[0]
+
+            # Mark step completed for resume tracking
+            PipelineResume.mark_step_completed(project, "video")
             # Commit happens automatically on context exit
 
             logger.info(
@@ -297,19 +363,37 @@ def fetch_visuals_task(
         except Exception as exc:
             logger.error("Visual fetch failed for project={}: {}", project_id, exc)
 
-            if project is not None:
-                emit_status_update(
-                    project_id=project_id,
-                    status="FAILED",
-                    telegram_user_id=project.telegram_user_id,
-                    telegram_chat_id=project.telegram_chat_id,
-                    telegram_message_id=project.telegram_message_id,
-                    extra={"error": str(exc)},
-                )
-
             if self.request.retries >= self.max_retries:
+                if project is not None:
+                    emit_status_update(
+                        project_id=project_id,
+                        status="FAILED",
+                        telegram_user_id=project.telegram_user_id,
+                        telegram_chat_id=project.telegram_chat_id,
+                        telegram_message_id=project.telegram_message_id,
+                        extra={"error": str(exc)},
+                    )
                 _mark_project_failed(
                     project_id, f"Visual fetch failed after {self.max_retries + 1} attempts: {exc}"
                 )
+                try:
+                    asyncio.run(DeadLetterQueue.add_failed_task(
+                        task_id=self.request.id, task_name=self.name,
+                        args=self.request.args, kwargs=self.request.kwargs,
+                        exception=exc, traceback_str=traceback.format_exc(),
+                        project_id=project_id, update_project_status=False,
+                    ))
+                except Exception as dlq_exc:
+                    logger.error("Failed to add task to DLQ: {}", dlq_exc)
                 raise
+
+            if project is not None:
+                emit_status_update(
+                    project_id=project_id,
+                    status="VIDEO_GENERATING",
+                    telegram_user_id=project.telegram_user_id,
+                    telegram_chat_id=project.telegram_chat_id,
+                    telegram_message_id=project.telegram_message_id,
+                    extra={"retry": self.request.retries + 1},
+                )
             raise self.retry(exc=exc)

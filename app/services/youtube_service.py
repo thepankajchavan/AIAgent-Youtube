@@ -7,6 +7,7 @@ Handles OAuth2 token management and resumable uploads.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -22,6 +23,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.core.circuit_breaker import with_youtube_breaker
 from app.core.config import get_settings
 from app.core.encryption import decrypt_string, encrypt_string
 
@@ -144,6 +146,7 @@ def _get_authenticated_service():
     return build("youtube", "v3", credentials=creds)
 
 
+@with_youtube_breaker()
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=5, min=10, max=120),
@@ -158,9 +161,11 @@ def upload_video(
     title: str,
     description: str,
     tags: list[str],
-    category: str = "entertainment",
-    privacy_status: str = "private",
+    category: str = "education",
+    privacy_status: str = "public",
     is_short: bool = True,
+    hashtags: list[str] | None = None,
+    progress_callback: Callable[[float], None] | None = None,
 ) -> dict:
     """
     Upload a video to YouTube.
@@ -173,6 +178,8 @@ def upload_video(
         category: Category name (mapped to YouTube category ID).
         privacy_status: "private", "unlisted", or "public".
         is_short: If True, prepends #Shorts to title/tags for Shorts shelf.
+        hashtags: List of hashtags (with #) to append to description.
+        progress_callback: Optional callback called with progress fraction (0.0-1.0).
 
     Returns:
         Dict with keys: video_id, url.
@@ -191,6 +198,10 @@ def upload_video(
 
     # Truncate title to YouTube limit
     title = title[:100]
+
+    # Append hashtags to description (YouTube shows last 3 above the title)
+    if hashtags:
+        description = description + "\n\n" + " ".join(hashtags)
 
     category_id = CATEGORY_IDS.get(category.lower(), "24")
 
@@ -232,10 +243,49 @@ def upload_video(
     while response is None:
         status, response = request.next_chunk()
         if status:
-            logger.info("Upload progress: {:.0%}", status.progress())
+            progress = status.progress()
+            logger.info("Upload progress: {:.0%}", progress)
+            if progress_callback:
+                progress_callback(progress)
 
     video_id = response["id"]
     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
     logger.info("Upload complete — video_id={} url={}", video_id, video_url)
     return {"video_id": video_id, "url": video_url}
+
+
+def set_thumbnail(video_id: str, thumbnail_path: str | Path) -> bool:
+    """
+    Set a custom thumbnail for a YouTube video.
+
+    Requires the channel to be verified for custom thumbnails.
+    Fails gracefully if the channel is not verified.
+
+    Args:
+        video_id: YouTube video ID.
+        thumbnail_path: Path to the thumbnail image (JPEG/PNG, <2MB).
+
+    Returns:
+        True if thumbnail was set, False on failure.
+    """
+    thumbnail_path = Path(thumbnail_path)
+    if not thumbnail_path.exists():
+        logger.warning("Thumbnail file not found: {}", thumbnail_path)
+        return False
+
+    try:
+        youtube = _get_authenticated_service()
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg"),
+        ).execute()
+        logger.info("Thumbnail set for video {}", video_id)
+        return True
+    except Exception as exc:
+        logger.warning(
+            "Failed to set thumbnail for video {} (channel may not be verified): {}",
+            video_id,
+            exc,
+        )
+        return False

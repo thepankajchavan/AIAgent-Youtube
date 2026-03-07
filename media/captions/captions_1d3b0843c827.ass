@@ -1,0 +1,39 @@
+[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.30,Default,,0,0,0,,RIGHT NOW THE
+Dialogue: 0,0:00:01.30,0:00:02.32,Default,,0,0,0,,UAE IS ON
+Dialogue: 0,0:00:02.32,0:00:03.04,Default,,0,0,0,,HIGH ALERT AS
+Dialogue: 0,0:00:03.04,0:00:04.48,Default,,0,0,0,,IRAN LAUNCHES RELENTLESS
+Dialogue: 0,0:00:04.48,0:00:05.54,Default,,0,0,0,,MISSILE AND DRONE
+Dialogue: 0,0:00:05.54,0:00:05.96,Default,,0,0,0,,ATTACKS
+Dialogue: 0,0:00:06.72,0:00:07.54,Default,,0,0,0,,SIX BALLISTIC MISSILES
+Dialogue: 0,0:00:07.54,0:00:09.34,Default,,0,0,0,,AND 125 DRONES
+Dialogue: 0,0:00:09.34,0:00:10.52,Default,,0,0,0,,WERE INTERCEPTED JUST
+Dialogue: 0,0:00:10.52,0:00:12.06,Default,,0,0,0,,YESTERDAY BY UAE
+Dialogue: 0,0:00:12.06,0:00:12.84,Default,,0,0,0,,AIR DEFENSES
+Dialogue: 0,0:00:13.84,0:00:14.54,Default,,0,0,0,,DUBAI AIRPORT
+Dialogue: 0,0:00:15.00,0:00:15.90,Default,,0,0,0,,THE WORLD'S BUSIEST
+Dialogue: 0,0:00:15.90,0:00:16.30,Default,,0,0,0,,HUB
+Dialogue: 0,0:00:16.74,0:00:17.46,Default,,0,0,0,,IS IN CHAOS
+Dialogue: 0,0:00:17.88,0:00:19.04,Default,,0,0,0,,WITH FLIGHT CANCELLATIONS
+Dialogue: 0,0:00:19.04,0:00:20.26,Default,,0,0,0,,AFFECTING OVER A
+Dialogue: 0,0:00:20.26,0:00:21.30,Default,,0,0,0,,MILLION PASSENGERS GLOBALLY
+Dialogue: 0,0:00:22.16,0:00:23.18,Default,,0,0,0,,A MASSIVE FIRE
+Dialogue: 0,0:00:23.18,0:00:24.30,Default,,0,0,0,,AT FUJAIRAH PORT
+Dialogue: 0,0:00:24.30,0:00:25.64,Default,,0,0,0,,HAS DISRUPTED VITAL
+Dialogue: 0,0:00:25.64,0:00:27.44,Default,,0,0,0,,OIL ZONES ESCALATING
+Dialogue: 0,0:00:27.44,0:00:28.40,Default,,0,0,0,,REGIONAL TENSIONS
+Dialogue: 0,0:00:29.18,0:00:29.92,Default,,0,0,0,,COULD THIS CONFLICT
+Dialogue: 0,0:00:29.92,0:00:31.14,Default,,0,0,0,,SPIRAL FURTHER INTO
+Dialogue: 0,0:00:31.14,0:00:31.96,Default,,0,0,0,,GLOBAL INSTABILITY

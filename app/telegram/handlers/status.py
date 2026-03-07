@@ -4,6 +4,7 @@ import httpx
 from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.helpers import escape_markdown
 
 from app.core.config import get_settings
 from app.models.video import VideoProject
@@ -45,11 +46,14 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "uploading": "📤",
         }.get(project["status"], "🔄")
 
+        safe_topic = escape_markdown(project['topic'], version=1)
+        safe_status = escape_markdown(project['status'], version=1)
+
         text = (
             f"{status_emoji} *Project Status*\n\n"
             f"🆔 ID: `{project['id']}`\n"
-            f"📝 Topic: {project['topic']}\n"
-            f"📊 Status: {project['status']}\n"
+            f"📝 Topic: {safe_topic}\n"
+            f"📊 Status: {safe_status}\n"
             f"📅 Created: {project['created_at'][:10]}\n"
         )
 
@@ -57,7 +61,8 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"\n🔗 [Watch on YouTube]({project['youtube_url']})"
 
         if project.get("error_message"):
-            text += f"\n\n❌ Error: {project['error_message']}"
+            safe_error = escape_markdown(project['error_message'], version=1)
+            text += f"\n\n❌ Error: {safe_error}"
 
         await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -101,11 +106,13 @@ async def list_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }.get(p.status.value, "🔄")
 
         topic_preview = p.topic[:40] + "..." if len(p.topic) > 40 else p.topic
+        safe_preview = escape_markdown(topic_preview, version=1)
+        safe_status_val = escape_markdown(p.status.value, version=1)
 
         lines.append(
             f"{status_emoji} `{p.id}`\n"
-            f"   {topic_preview}\n"
-            f"   {p.status.value} • {p.created_at.strftime('%m/%d %H:%M')}\n"
+            f"   {safe_preview}\n"
+            f"   {safe_status_val} • {p.created_at.strftime('%m/%d %H:%M')}\n"
         )
 
     lines.append("\nUse `/status <id>` to see details.")

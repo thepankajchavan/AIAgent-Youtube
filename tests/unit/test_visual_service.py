@@ -1,11 +1,22 @@
 """Unit tests for Visual service with mocked Pexels API."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from app.services.visual_service import download_video, fetch_clips, search_videos
+
+
+@pytest.fixture(autouse=True)
+def mock_pexels_rate_limit():
+    """Auto-mock rate limit check so search tests don't need Redis."""
+    with patch(
+        "app.services.visual_service._check_pexels_rate_limit",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        yield
 
 
 class TestVideoSearch:
@@ -270,6 +281,7 @@ class TestVideoDownload:
         mock_settings = MagicMock()
         mock_settings.video_dir = tmp_path / "videos"
         mocker.patch("app.services.visual_service.settings", mock_settings)
+        mocker.patch("app.services.visual_service.probe_duration", return_value=10.0)
 
         # Mock video data
         mock_video_data = b"fake_mp4_video_data" * 1000
@@ -309,6 +321,7 @@ class TestVideoDownload:
         mock_settings = MagicMock()
         mock_settings.video_dir = tmp_path / "videos"
         mocker.patch("app.services.visual_service.settings", mock_settings)
+        mocker.patch("app.services.visual_service.probe_duration", return_value=10.0)
 
         async def mock_aiter_bytes(chunk_size):
             yield b"video_data"
@@ -343,6 +356,7 @@ class TestVideoDownload:
         mock_settings = MagicMock()
         mock_settings.video_dir = video_dir
         mocker.patch("app.services.visual_service.settings", mock_settings)
+        mocker.patch("app.services.visual_service.probe_duration", return_value=10.0)
 
         async def mock_aiter_bytes(chunk_size):
             yield b"data"

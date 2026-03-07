@@ -1,24 +1,24 @@
 """
 Pipeline Orchestrator — chains the full video creation workflow using Celery canvas.
 
-Pipeline flow (stock_only — default, unchanged):
+Pipeline flow (stock_only — default):
     1. generate_script_task            (scripts queue)
     2. [generate_audio_task,           (media queue — parallel via chord)
         fetch_visuals_task]
     3. assemble_video_task             (media queue — chord callback)
     4. upload_to_youtube_task          (upload queue)
 
-Pipeline flow (hybrid / ai_only — new):
+Pipeline flow (hybrid / ai_only — audio-first sequential):
     1. generate_script_task            (scripts queue)
-    2. split_scenes_task               (scripts queue — LLM scene planning)
-    3. [generate_audio_task,           (media queue — parallel via chord)
-        generate_visuals_task]         (media queue — hybrid AI + stock)
-    4. assemble_video_task             (media queue — chord callback)
-    5. upload_to_youtube_task          (upload queue)
+    2. generate_audio_task             (media queue — audio first for duration)
+    3. split_scenes_task               (scripts queue — uses audio_duration)
+    4. generate_visuals_task           (media queue — scene durations match audio)
+    5. assemble_video_task             (media queue — sequential input)
+    6. upload_to_youtube_task          (upload queue)
 
 The orchestrator uses Celery primitives:
     chain → sequential steps
-    chord → parallel step (audio + visuals) with a callback (assembly)
+    chord → parallel step (stock_only: audio + visuals) with callback
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ def build_pipeline(
     skip_upload: bool = False,
     visual_strategy: str = "stock_only",
     ai_video_provider: str | None = None,
+    target_duration: int | None = None,
 ) -> chain:
     """
     Build the full Celery pipeline for a video project.
@@ -74,6 +75,7 @@ def build_pipeline(
         topic=topic,
         video_format=video_format,
         provider=provider,
+        target_duration=target_duration,
     )
 
     if visual_strategy == "stock_only":
@@ -87,21 +89,20 @@ def build_pipeline(
         )
         steps = [step_script, parallel_media]
     else:
-        # ── AI VIDEO PATH — scene splitting + hybrid visuals ─
+        # ── AI VIDEO PATH — audio-first sequential ───────────
+        # Audio runs first so we know the exact duration, then
+        # scene splitting distributes that duration across scenes,
+        # then AI visuals are generated with precise per-scene durations.
         from app.workers.scene_tasks import (
             generate_visuals_task,
             split_scenes_task,
         )
 
+        step_audio = generate_audio_task.s()
         step_scene_split = split_scenes_task.s()
-        parallel_media = chord(
-            group(
-                generate_audio_task.s(),
-                generate_visuals_task.s(),
-            ),
-            assemble_video_task.s(),
-        )
-        steps = [step_script, step_scene_split, parallel_media]
+        step_visuals = generate_visuals_task.s()
+        step_assembly = assemble_video_task.s()
+        steps = [step_script, step_audio, step_scene_split, step_visuals, step_assembly]
 
     if not skip_upload:
         step_upload = upload_to_youtube_task.s()
@@ -122,6 +123,7 @@ def run_pipeline_task(
     skip_upload: bool = False,
     visual_strategy: str = "stock_only",
     ai_video_provider: str | None = None,
+    target_duration: int | None = None,
 ) -> str:
     """
     Entry-point task that builds and dispatches the full pipeline.
@@ -137,6 +139,7 @@ def run_pipeline_task(
         skip_upload=skip_upload,
         visual_strategy=visual_strategy,
         ai_video_provider=ai_video_provider,
+        target_duration=target_duration,
     )
 
     result = pipeline.apply_async()

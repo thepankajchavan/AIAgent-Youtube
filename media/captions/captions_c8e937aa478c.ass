@@ -1,0 +1,43 @@
+[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.40,Default,,0,0,0,,AMIDST ESCALATING TENSIONS
+Dialogue: 0,0:00:01.94,0:00:02.76,Default,,0,0,0,,THE UAE HAS
+Dialogue: 0,0:00:02.76,0:00:04.70,Default,,0,0,0,,INTERCEPTED OVER 125
+Dialogue: 0,0:00:04.70,0:00:05.86,Default,,0,0,0,,IRANIAN DRONES IN
+Dialogue: 0,0:00:05.86,0:00:06.62,Default,,0,0,0,,A SINGLE DAY
+Dialogue: 0,0:00:07.66,0:00:08.24,Default,,0,0,0,,IMAGINE THE NIGHT
+Dialogue: 0,0:00:08.24,0:00:09.02,Default,,0,0,0,,SKY LIT UP
+Dialogue: 0,0:00:09.02,0:00:10.14,Default,,0,0,0,,WITH MISSILE INTERCEPTIONS
+Dialogue: 0,0:00:10.14,0:00:11.42,Default,,0,0,0,,AS THE UAE'S
+Dialogue: 0,0:00:11.42,0:00:12.18,Default,,0,0,0,,AIR DEFENSE FIGHTS
+Dialogue: 0,0:00:12.18,0:00:12.64,Default,,0,0,0,,BACK
+Dialogue: 0,0:00:13.68,0:00:15.28,Default,,0,0,0,,REGIONAL AIRSPACES REMAIN
+Dialogue: 0,0:00:15.28,0:00:15.84,Default,,0,0,0,,CLOSED
+Dialogue: 0,0:00:16.78,0:00:17.48,Default,,0,0,0,,CREATING A TRAVEL
+Dialogue: 0,0:00:17.48,0:00:18.08,Default,,0,0,0,,NIGHTMARE
+Dialogue: 0,0:00:19.16,0:00:19.80,Default,,0,0,0,,OVER A MILLION
+Dialogue: 0,0:00:19.80,0:00:20.92,Default,,0,0,0,,PASSENGERS ARE STRANDED
+Dialogue: 0,0:00:20.92,0:00:21.66,Default,,0,0,0,,IN DUBAI
+Dialogue: 0,0:00:22.30,0:00:23.00,Default,,0,0,0,,FEELING THE IMPACT
+Dialogue: 0,0:00:23.00,0:00:23.82,Default,,0,0,0,,OF THIS AIRBORNE
+Dialogue: 0,0:00:23.82,0:00:24.44,Default,,0,0,0,,CONFLICT
+Dialogue: 0,0:00:25.24,0:00:26.44,Default,,0,0,0,,IRANIAN STRIKES HAVE
+Dialogue: 0,0:00:26.44,0:00:27.32,Default,,0,0,0,,EVEN HIT VITAL
+Dialogue: 0,0:00:27.32,0:00:28.14,Default,,0,0,0,,OIL ZONES
+Dialogue: 0,0:00:28.84,0:00:29.80,Default,,0,0,0,,TRIGGERING MASSIVE FIRES
+Dialogue: 0,0:00:29.80,0:00:31.10,Default,,0,0,0,,AND REGIONAL UNCERTAINTY
+Dialogue: 0,0:00:31.94,0:00:32.98,Default,,0,0,0,,THE GULF'S STABILITY
+Dialogue: 0,0:00:32.98,0:00:34.14,Default,,0,0,0,,HANGS BY A
+Dialogue: 0,0:00:34.14,0:00:34.58,Default,,0,0,0,,THREAD AS EACH
+Dialogue: 0,0:00:34.58,0:00:35.62,Default,,0,0,0,,DAY UNFOLDS

@@ -3,5 +3,6 @@
 from app.workers.assembly_tasks import assemble_video_task  # noqa: F401
 from app.workers.media_tasks import fetch_visuals_task, generate_audio_task  # noqa: F401
 from app.workers.pipeline import run_pipeline_task  # noqa: F401
+from app.workers.scene_tasks import generate_visuals_task, split_scenes_task  # noqa: F401
 from app.workers.script_tasks import generate_script_task  # noqa: F401
 from app.workers.upload_tasks import upload_to_youtube_task  # noqa: F401

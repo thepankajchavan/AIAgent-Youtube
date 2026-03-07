@@ -104,6 +104,14 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         comment="Total AI video generation cost in USD",
     )
 
+    # ── Duration control ────────────────────────────────────
+    target_duration: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=None,
+        comment="User-requested target duration in seconds",
+    )
+
     # ── Artefact paths ───────────────────────────────────────
     audio_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     video_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -150,6 +158,7 @@ class VideoProject(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             VideoStatus.FAILED,
         },
         VideoStatus.AUDIO_GENERATING: {
+            VideoStatus.SCENE_SPLITTING,  # AI path: audio-first sequential
             VideoStatus.VIDEO_GENERATING,
             VideoStatus.ASSEMBLING,
             VideoStatus.FAILED,

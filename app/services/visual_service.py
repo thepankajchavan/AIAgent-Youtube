@@ -21,17 +21,53 @@ from tenacity import (
 )
 
 from app.core.cache import cache_pexels_search, get_cached_pexels_search
+from app.core.circuit_breaker import with_pexels_breaker
 from app.core.config import get_settings
+from app.services.media_service import probe_duration
 
 settings = get_settings()
 
 PEXELS_BASE_URL = "https://api.pexels.com"
+_PEXELS_RATE_LIMIT_KEY = "pexels:api_calls:{hour}"
+_PEXELS_RATE_LIMIT_THRESHOLD = 180  # 90% of 200/hour Pexels limit
+
+
+async def _check_pexels_rate_limit() -> bool:
+    """Check if Pexels API rate limit threshold is approaching.
+
+    Returns True if safe to proceed, False if rate limit exceeded.
+    Uses Redis INCR with 1-hour TTL for tracking.
+    """
+    from datetime import datetime, UTC
+    from app.core.redis_client import get_redis_client
+
+    try:
+        redis = await get_redis_client()
+        hour_key = _PEXELS_RATE_LIMIT_KEY.format(
+            hour=datetime.now(UTC).strftime("%Y%m%d%H")
+        )
+        count = await redis.incr(hour_key)
+        if count == 1:
+            await redis.expire(hour_key, 3600)
+
+        if count > _PEXELS_RATE_LIMIT_THRESHOLD:
+            logger.warning(
+                "Pexels rate limit approaching: {}/{} calls this hour",
+                count,
+                _PEXELS_RATE_LIMIT_THRESHOLD,
+            )
+            return False
+        return True
+    except Exception as exc:
+        logger.debug("Rate limit check failed (proceeding): {}", exc)
+        return True  # Don't block on Redis failures
 
 
 def _headers() -> dict[str, str]:
     return {"Authorization": settings.pexels_api_key}
 
 
+@with_pexels_breaker(fallback_to_placeholder=False)
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=3, max=30),
@@ -68,6 +104,11 @@ async def search_videos(
     if cached_results is not None:
         logger.info(f"Cache HIT for Pexels search: '{query}'")
         return cached_results
+
+    # Rate limit check (only for non-cached requests)
+    if not await _check_pexels_rate_limit():
+        logger.warning("Pexels rate limit exceeded — returning empty for '{}'", query)
+        return []
 
     logger.info(
         "Cache MISS - Pexels search — query='{}' orientation={} count={}",
@@ -160,6 +201,7 @@ def _pick_best_file(files: list[dict], orientation: str) -> dict | None:
     return scored[0][1]
 
 
+@with_pexels_breaker(fallback_to_placeholder=False)
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=3, max=30),
@@ -201,6 +243,15 @@ async def download_video(
                     f.write(chunk)
 
     logger.info("Clip saved — {} ({:.1f}MB)", output_path.name, bytes_written / 1_048_576)
+
+    # Validate downloaded clip
+    clip_duration = probe_duration(output_path)
+    if clip_duration < 1.0:
+        output_path.unlink(missing_ok=True)
+        raise ValueError(
+            f"Downloaded clip too short ({clip_duration:.1f}s) — likely corrupted"
+        )
+
     return output_path
 
 

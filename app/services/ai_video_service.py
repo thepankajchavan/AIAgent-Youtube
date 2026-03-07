@@ -30,7 +30,9 @@ from tenacity import (
 )
 
 from app.core.cache import QueryCache
+from app.core.circuit_breaker import with_kling_breaker, with_runway_breaker, with_stability_breaker
 from app.core.config import get_settings
+from app.services.media_service import probe_duration
 from app.services.visual_service import create_placeholder_video, fetch_clips
 
 settings = get_settings()
@@ -57,9 +59,10 @@ class Scene:
 
 # ── Cost Constants ───────────────────────────────────────────────
 
-# Approximate per-second costs (USD)
+# Per-second costs in USD (credits × $0.01/credit)
+# gen4.5=12cr/s=$0.12, veo3.1_fast=10cr/s=$0.10, veo3.1=20cr/s=$0.20
 COST_PER_SECOND: dict[str, float] = {
-    "runway": 0.05,
+    "runway": 0.12,
     "stability": 0.03,
     "kling": 0.02,
 }
@@ -109,21 +112,63 @@ SCENE_SPLIT_SYSTEM_PROMPT = """\
 You are an expert video scene planner for YouTube content.
 Given a video script, split it into distinct visual scenes for video production.
 
+DURATION FORMULA:
+- Target total duration: exactly {total_duration} seconds of AI-generated content.
+- Split into exactly 3 scenes.
+- The 3 scenes map to the script's 3 beats: Hook → Build → Payoff.
+- Distribute duration proportionally to each scene's narration length.
+- The sum of all scene durations MUST equal {total_duration} seconds.
+- A pre-made outro clip is appended automatically — do NOT create a CTA scene.
+
+STYLE CONSISTENCY:
+- All 3 scenes MUST share a unified visual palette: same color grading, lighting mood,
+  and overall aesthetic. Specify the shared look in EVERY ai_prompt.
+- Example: if Scene 1 uses "warm golden-hour lighting with amber tones",
+  Scenes 2 and 3 must reference the same lighting and color scheme.
+
 For each scene, provide:
 - scene_number: Sequential integer starting from 1
 - narration: The exact portion of the script narrated during this scene
 - visual_description: Detailed description of what should be shown visually
-- visual_type: "ai_generated" if the scene requires unique, creative, abstract, \
-impossible, or highly specific visuals that stock footage cannot provide. \
-Use "stock_footage" for generic real-world footage (nature, cities, people, labs).
-- stock_query: A Pexels search query (always provide — used as fallback)
-- ai_prompt: A detailed, cinematic prompt for AI video generation (always provide)
-- duration_seconds: How long this scene lasts (2-8 seconds each, based on narration pace)
+- visual_type: {visual_type_instruction}
+- stock_query: A 2-4 word Pexels search query — specific and concrete
+  (e.g. "molten lava ocean" not "nature"). Always provide as fallback.
+- ai_prompt: A rich, cinematic prompt for AI video generation following the
+  AI PROMPT GUIDELINES below. Keep under 120 words. Always provide.
+- duration_seconds: 10 seconds per scene (fixed, exactly 3 scenes)
+
+AI PROMPT GUIDELINES — use specific vocabulary from these categories:
+  Camera: dolly in, trucking shot, crane shot, steadicam, FPV, orbital, push-in,
+          pull-out, whip pan, rack focus, tracking shot
+  Cinematic: shallow depth of field, 8K, anamorphic lens flare, film grain,
+             volumetric lighting, motion blur, bokeh
+  Lighting: golden hour, neon-lit night, overcast diffused, backlit silhouette,
+            Rembrandt lighting, high-key, low-key
+  Framing: extreme close-up, medium shot, wide establishing shot, over-the-shoulder,
+           bird's-eye view, low-angle hero shot ({orientation})
+  Transitions: end each scene's prompt with a transition hint for the next scene
+               (e.g. "camera rises into clouds" → next scene starts from above)
+
+COHERENCE: each scene's visual must directly illustrate its narration — no random B-roll.
 
 Return ONLY a JSON object with key "scenes" containing a list of scene objects.
-Total scene durations should approximately match the script reading time.
 For a {format} video, use {orientation} framing in all visual descriptions.\
 """
+
+# Strategy-specific instructions injected into the prompt
+_VISUAL_TYPE_INSTRUCTIONS = {
+    "ai_only": (
+        '"ai_generated" for ALL scenes — every scene will be rendered by an AI video model.'
+    ),
+    "stock_only": (
+        '"stock_footage" for ALL scenes — every scene will use Pexels stock footage.'
+    ),
+    "hybrid": (
+        '"ai_generated" if the scene requires unique, creative, abstract, impossible, '
+        "or highly specific visuals that stock footage cannot provide. "
+        'Use "stock_footage" for generic real-world footage (nature, cities, people, labs).'
+    ),
+}
 
 
 async def split_script_to_scenes(
@@ -131,6 +176,7 @@ async def split_script_to_scenes(
     video_format: str = "short",
     provider: str = "openai",
     visual_strategy: str = "hybrid",
+    audio_duration: float | None = None,
 ) -> list[Scene]:
     """
     Use LLM to split a script into visual scenes.
@@ -140,6 +186,8 @@ async def split_script_to_scenes(
         video_format: "short" or "long".
         provider: LLM provider ("openai" or "anthropic").
         visual_strategy: "hybrid" (LLM decides), "ai_only", or "stock_only".
+        audio_duration: Exact TTS audio duration in seconds. When provided,
+            scene durations are distributed to match audio precisely.
 
     Returns:
         List of Scene objects with visual_type assignments.
@@ -155,12 +203,27 @@ async def split_script_to_scenes(
         else "YouTube long-form (5-10 minutes)"
     )
 
-    system_prompt = SCENE_SPLIT_SYSTEM_PROMPT.format(
-        format=format_name,
-        orientation=orientation,
+    visual_type_instruction = _VISUAL_TYPE_INSTRUCTIONS.get(
+        visual_strategy,
+        _VISUAL_TYPE_INSTRUCTIONS["hybrid"],
     )
 
-    user_content = f"Script:\n{script}"
+    # Use real audio duration if available, otherwise estimate from word count
+    if audio_duration and audio_duration > 0:
+        total_duration = f"{audio_duration:.1f}"
+    else:
+        word_count_est = len(script.split())
+        total_duration = f"{(word_count_est / 150) * 60:.1f}" if word_count_est > 0 else "30"
+
+    system_prompt = SCENE_SPLIT_SYSTEM_PROMPT.format(
+        total_duration=total_duration,
+        format=format_name,
+        orientation=orientation,
+        visual_type_instruction=visual_type_instruction,
+    )
+
+    word_count = len(script.split())
+    user_content = f"Script ({word_count} words):\n{script}"
 
     # Call LLM using existing infrastructure
     if provider == LLMProvider.ANTHROPIC.value or provider == "anthropic":
@@ -182,7 +245,7 @@ async def split_script_to_scenes(
             visual_type=raw.get("visual_type", "stock_footage"),
             stock_query=raw.get("stock_query", "nature"),
             ai_prompt=raw.get("ai_prompt", raw.get("visual_description", "")),
-            duration_seconds=float(raw.get("duration_seconds", 4.0)),
+            duration_seconds=float(raw.get("duration_seconds", 10.0)),
         )
         scenes.append(scene)
 
@@ -195,11 +258,66 @@ async def split_script_to_scenes(
             s.visual_type = "stock_footage"
     # "hybrid" keeps the LLM's decisions
 
+    # Duration distribution: use real audio duration or fallback to word-count estimate
+    if audio_duration and audio_duration > 0:
+        # Exact sync: distribute audio duration proportionally by narration word count
+        total_words = sum(len(s.narration.split()) for s in scenes)
+        if total_words > 0:
+            for s in scenes:
+                scene_words = len(s.narration.split())
+                s.duration_seconds = round((scene_words / total_words) * audio_duration, 1)
+        else:
+            # Equal distribution if narration is empty
+            per_scene = round(audio_duration / len(scenes), 1)
+            for s in scenes:
+                s.duration_seconds = per_scene
+
+        # Fix rounding error — assign remainder to longest scene
+        remainder = round(audio_duration - sum(s.duration_seconds for s in scenes), 1)
+        if remainder != 0:
+            longest = max(scenes, key=lambda s: s.duration_seconds)
+            longest.duration_seconds = round(longest.duration_seconds + remainder, 1)
+
+        logger.info(
+            "Scene durations synced to audio — audio={:.1f}s scenes=[{}]",
+            audio_duration,
+            ", ".join(f"{s.duration_seconds:.1f}s" for s in scenes),
+        )
+    else:
+        # Fallback: estimate from word count (no audio_duration available)
+        total_scene_duration = sum(s.duration_seconds for s in scenes)
+        word_count = len(script.split())
+        estimated_reading_time = (word_count / 150) * 60  # seconds at 150 WPM
+
+        if estimated_reading_time > 0:
+            drift_pct = abs(total_scene_duration - estimated_reading_time) / estimated_reading_time
+            if drift_pct > 0.30:
+                logger.warning(
+                    "Scene duration drift {:.0%}: scenes={:.1f}s vs reading={:.1f}s ({} words) "
+                    "— adjusting proportionally",
+                    drift_pct,
+                    total_scene_duration,
+                    estimated_reading_time,
+                    word_count,
+                )
+                if total_scene_duration > 0:
+                    scale = estimated_reading_time / total_scene_duration
+                    for s in scenes:
+                        s.duration_seconds = round(s.duration_seconds * scale, 1)
+            else:
+                logger.debug(
+                    "Scene duration OK — scenes={:.1f}s vs reading={:.1f}s (drift={:.0%})",
+                    total_scene_duration,
+                    estimated_reading_time,
+                    drift_pct,
+                )
+
     logger.info(
-        "Scene split complete — {} scenes ({} AI, {} stock)",
+        "Scene split complete — {} scenes ({} AI, {} stock, total={:.1f}s)",
         len(scenes),
         sum(1 for s in scenes if s.visual_type == "ai_generated"),
         sum(1 for s in scenes if s.visual_type == "stock_footage"),
+        sum(s.duration_seconds for s in scenes),
     )
     return scenes
 
@@ -243,9 +361,130 @@ async def _call_anthropic_for_scenes(system_prompt: str, user_content: str) -> d
     return json.loads(raw.strip())
 
 
+# ── Prompt Enhancement ────────────────────────────────────────────
+
+# Quality boosters appended if not already present in the prompt
+_QUALITY_TOKENS = [
+    "cinematic",
+    "8K",
+    "shallow depth of field",
+    "film grain",
+    "professional color grading",
+]
+
+# Framing hints by aspect ratio
+_FRAMING_HINTS = {
+    "9:16": "vertical composition, portrait framing, subject centered",
+    "16:9": "wide cinematic composition, rule of thirds, horizontal framing",
+}
+
+
+def _enhance_runway_prompt(prompt: str, aspect_ratio: str = "9:16") -> str:
+    """Enrich a scene prompt with cinematic quality tokens before sending to Runway.
+
+    Similar to ``_preprocess_text_for_tts`` for ElevenLabs — the raw LLM scene
+    prompt is good, but appending quality modifiers produces noticeably better
+    AI-generated video from Runway Gen-3/Gen-4.
+
+    Enhancements:
+      1. Append quality tokens (8K, film grain, etc.) that aren't already present.
+      2. Add aspect-ratio-specific framing hints.
+      3. Ensure smooth motion keywords are present.
+      4. Strip excessive whitespace.
+
+    The enhanced prompt stays well within Runway's ~500-word limit.
+    """
+    prompt_lower = prompt.lower()
+
+    # 1. Append missing quality boosters
+    missing = [tok for tok in _QUALITY_TOKENS if tok.lower() not in prompt_lower]
+    if missing:
+        prompt = f"{prompt.rstrip('.')}. {', '.join(missing)}."
+
+    # 2. Add framing hint for the target aspect ratio
+    framing = _FRAMING_HINTS.get(aspect_ratio, "")
+    if framing and framing.split(",")[0].strip().lower() not in prompt_lower:
+        prompt = f"{prompt.rstrip('.')}. {framing}."
+
+    # 3. Ensure smooth motion is mentioned (critical for AI video quality)
+    if "smooth" not in prompt_lower and "fluid" not in prompt_lower:
+        prompt = f"{prompt.rstrip('.')}. Smooth, fluid camera motion."
+
+    # 4. Clean up whitespace
+    prompt = " ".join(prompt.split())
+
+    return prompt
+
+
+def _enhance_stability_prompt(prompt: str, aspect_ratio: str = "9:16") -> str:
+    """Enrich a scene prompt for Stability AI image-to-video pipeline.
+
+    Stability works best with emphasis on composition, lighting, and
+    subtle natural motion (since SVD animates a still image).
+    """
+    prompt_lower = prompt.lower()
+
+    # Stability-specific tokens (image quality + subtle motion)
+    stability_tokens = [
+        "high detail",
+        "professional photography",
+        "natural lighting",
+        "subtle natural motion",
+    ]
+    missing = [tok for tok in stability_tokens if tok.lower() not in prompt_lower]
+    if missing:
+        prompt = f"{prompt.rstrip('.')}. {', '.join(missing)}."
+
+    # Shared quality tokens
+    shared_missing = [tok for tok in _QUALITY_TOKENS if tok.lower() not in prompt_lower]
+    if shared_missing:
+        prompt = f"{prompt.rstrip('.')}. {', '.join(shared_missing)}."
+
+    # Add framing hint for the target aspect ratio
+    framing = _FRAMING_HINTS.get(aspect_ratio, "")
+    if framing and framing.split(",")[0].strip().lower() not in prompt_lower:
+        prompt = f"{prompt.rstrip('.')}. {framing}."
+
+    # Clean up whitespace
+    prompt = " ".join(prompt.split())
+    return prompt
+
+
+def _enhance_kling_prompt(prompt: str, aspect_ratio: str = "9:16") -> str:
+    """Enrich a scene prompt for Kling AI text-to-video.
+
+    Similar to Runway enhancement but with Kling-optimized language
+    (emphasizes camera motion and dynamic composition).
+    """
+    prompt_lower = prompt.lower()
+
+    # Append missing quality boosters (shared with Runway)
+    missing = [tok for tok in _QUALITY_TOKENS if tok.lower() not in prompt_lower]
+    if missing:
+        prompt = f"{prompt.rstrip('.')}. {', '.join(missing)}."
+
+    # Add framing hint for the target aspect ratio
+    framing = _FRAMING_HINTS.get(aspect_ratio, "")
+    if framing and framing.split(",")[0].strip().lower() not in prompt_lower:
+        prompt = f"{prompt.rstrip('.')}. {framing}."
+
+    # Ensure smooth motion is mentioned
+    if "smooth" not in prompt_lower and "fluid" not in prompt_lower:
+        prompt = f"{prompt.rstrip('.')}. Smooth, fluid camera motion."
+
+    # Kling-specific: emphasize dynamic composition
+    if "dynamic" not in prompt_lower:
+        prompt = f"{prompt.rstrip('.')}. Dynamic composition."
+
+    # Clean up whitespace
+    prompt = " ".join(prompt.split())
+    return prompt
+
+
 # ── AI Video Provider Implementations ────────────────────────────
 
 
+@with_runway_breaker()
 @retry(
     stop=stop_after_attempt(2),
     wait=wait_exponential(multiplier=5, min=10, max=60),
@@ -257,7 +496,7 @@ async def _call_anthropic_for_scenes(system_prompt: str, user_content: str) -> d
 )
 async def generate_ai_video_runway(
     prompt: str,
-    duration: int = 5,
+    duration: int = 10,
     aspect_ratio: str = "9:16",
 ) -> Path:
     """
@@ -273,11 +512,19 @@ async def generate_ai_video_runway(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"runway_{uuid.uuid4().hex[:12]}.mp4"
 
+    # Enhance prompt with cinematic quality tokens
+    enhanced_prompt = _enhance_runway_prompt(prompt, aspect_ratio)
+    logger.debug("Runway prompt enhanced — {} → {} chars", len(prompt), len(enhanced_prompt))
+
     async with httpx.AsyncClient(timeout=httpx.Timeout(settings.ai_video_timeout)) as client:
         # 1. Create generation task
         logger.info(
             "Runway Gen-3 — creating task (duration={}s, aspect={})", duration, aspect_ratio
         )
+        # Map aspect ratio to pixel dimensions (API requires pixel format)
+        ratio_map = {"9:16": "720:1280", "16:9": "1280:720"}
+        pixel_ratio = ratio_map.get(aspect_ratio, "720:1280")
+
         create_response = await client.post(
             "https://api.dev.runwayml.com/v1/text_to_video",
             headers={
@@ -287,11 +534,17 @@ async def generate_ai_video_runway(
             },
             json={
                 "model": settings.runway_model,
-                "prompt": prompt,
+                "promptText": enhanced_prompt,
                 "duration": duration,
-                "ratio": aspect_ratio,
+                "ratio": pixel_ratio,
             },
         )
+        if create_response.status_code != 200:
+            logger.error(
+                "Runway API error {}: {}",
+                create_response.status_code,
+                create_response.text[:500],
+            )
         create_response.raise_for_status()
         task_id = create_response.json().get("id")
         logger.info("Runway task created — id={}", task_id)
@@ -326,10 +579,17 @@ async def generate_ai_video_runway(
         video_response.raise_for_status()
         output_file.write_bytes(video_response.content)
 
-    logger.info("Runway video saved — {}", output_file)
+    # Validate downloaded clip
+    clip_duration = probe_duration(output_file)
+    if clip_duration < 1.0:
+        output_file.unlink(missing_ok=True)
+        raise ValueError(f"Runway clip too short ({clip_duration:.1f}s) — likely corrupted")
+
+    logger.info("Runway video saved — {} ({:.1f}s)", output_file, clip_duration)
     return output_file
 
 
+@with_stability_breaker()
 @retry(
     stop=stop_after_attempt(2),
     wait=wait_exponential(multiplier=5, min=10, max=60),
@@ -341,7 +601,7 @@ async def generate_ai_video_runway(
 )
 async def generate_ai_video_stability(
     prompt: str,
-    duration: int = 4,
+    duration: int = 10,
 ) -> Path:
     """
     Generate video using Stability AI (image-to-video pipeline).
@@ -355,6 +615,10 @@ async def generate_ai_video_stability(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"stability_{uuid.uuid4().hex[:12]}.mp4"
 
+    # Enhance prompt for Stability
+    enhanced_prompt = _enhance_stability_prompt(prompt, aspect_ratio="9:16")
+    logger.debug("Stability prompt enhanced — {} → {} chars", len(prompt), len(enhanced_prompt))
+
     async with httpx.AsyncClient(timeout=httpx.Timeout(settings.ai_video_timeout)) as client:
         headers = {
             "Authorization": f"Bearer {settings.stability_api_key}",
@@ -367,7 +631,7 @@ async def generate_ai_video_stability(
             "https://api.stability.ai/v2beta/stable-image/generate/core",
             headers={**headers, "Accept": "image/*"},
             data={
-                "prompt": prompt,
+                "prompt": enhanced_prompt,
                 "output_format": "png",
                 "aspect_ratio": "9:16",
             },
@@ -414,10 +678,17 @@ async def generate_ai_video_stability(
         with contextlib.suppress(OSError):
             image_path.unlink()
 
-    logger.info("Stability video saved — {}", output_file)
+    # Validate downloaded clip
+    clip_duration = probe_duration(output_file)
+    if clip_duration < 1.0:
+        output_file.unlink(missing_ok=True)
+        raise ValueError(f"Stability clip too short ({clip_duration:.1f}s) — likely corrupted")
+
+    logger.info("Stability video saved — {} ({:.1f}s)", output_file, clip_duration)
     return output_file
 
 
+@with_kling_breaker()
 @retry(
     stop=stop_after_attempt(2),
     wait=wait_exponential(multiplier=5, min=10, max=60),
@@ -429,7 +700,7 @@ async def generate_ai_video_stability(
 )
 async def generate_ai_video_kling(
     prompt: str,
-    duration: int = 5,
+    duration: int = 10,
     aspect_ratio: str = "9:16",
 ) -> Path:
     """
@@ -444,6 +715,10 @@ async def generate_ai_video_kling(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"kling_{uuid.uuid4().hex[:12]}.mp4"
 
+    # Enhance prompt for Kling
+    enhanced_prompt = _enhance_kling_prompt(prompt, aspect_ratio)
+    logger.debug("Kling prompt enhanced — {} → {} chars", len(prompt), len(enhanced_prompt))
+
     async with httpx.AsyncClient(timeout=httpx.Timeout(settings.ai_video_timeout)) as client:
         # 1. Create generation task
         logger.info("Kling AI — creating task (duration={}s, aspect={})", duration, aspect_ratio)
@@ -454,7 +729,7 @@ async def generate_ai_video_kling(
                 "Authorization": f"Bearer {settings.kling_access_key}",
             },
             json={
-                "prompt": prompt,
+                "prompt": enhanced_prompt,
                 "duration": str(duration),
                 "aspect_ratio": aspect_ratio,
                 "model": "kling-v1",
@@ -496,7 +771,13 @@ async def generate_ai_video_kling(
         video_response.raise_for_status()
         output_file.write_bytes(video_response.content)
 
-    logger.info("Kling video saved — {}", output_file)
+    # Validate downloaded clip
+    clip_duration = probe_duration(output_file)
+    if clip_duration < 1.0:
+        output_file.unlink(missing_ok=True)
+        raise ValueError(f"Kling clip too short ({clip_duration:.1f}s) — likely corrupted")
+
+    logger.info("Kling video saved — {} ({:.1f}s)", output_file, clip_duration)
     return output_file
 
 
@@ -509,9 +790,11 @@ async def _generate_with_provider(
     aspect_ratio: str,
 ) -> Path:
     """Route generation to the correct provider."""
-    duration = max(2, int(scene.duration_seconds))
+    duration = max(2, round(scene.duration_seconds))
     if provider == "runway":
-        return await generate_ai_video_runway(scene.ai_prompt, duration, aspect_ratio)
+        # Runway API max duration is 10s
+        runway_dur = min(duration, 10)
+        return await generate_ai_video_runway(scene.ai_prompt, runway_dur, aspect_ratio)
     elif provider == "stability":
         return await generate_ai_video_stability(scene.ai_prompt, duration)
     elif provider == "kling":
@@ -577,6 +860,7 @@ async def generate_scene_visual(
         )
         path = await _fetch_stock_for_scene(scene, orientation)
         scene.video_path = str(path)
+        scene.generation_cost = 0.0
         scene.provider_used = "pexels"
         return path
 
@@ -586,6 +870,7 @@ async def generate_scene_visual(
         )
         path = await _fetch_stock_for_scene(scene, orientation)
         scene.video_path = str(path)
+        scene.generation_cost = 0.0
         scene.provider_used = "pexels"
         return path
 
@@ -632,6 +917,7 @@ async def generate_scene_visual(
     logger.info("All AI providers failed, using stock footage for scene {}", scene.scene_number)
     path = await _fetch_stock_for_scene(scene, orientation)
     scene.video_path = str(path)
+    scene.generation_cost = 0.0
     scene.provider_used = "pexels"
     return path
 

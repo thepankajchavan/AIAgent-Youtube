@@ -7,8 +7,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.services.media_service import (
+    _concat_with_audio,
     assemble_video,
+    burn_captions,
     concatenate_clips,
+    normalize_audio,
     overlay_audio,
     probe_duration,
     scale_and_pad,
@@ -166,14 +169,20 @@ class TestConcatenateClips:
 class TestOverlayAudio:
     """Test audio overlay operations."""
 
-    def test_overlay_audio_success(self, mocker, tmp_path):
-        """Test successful audio overlay."""
+    def test_overlay_audio_loops_when_audio_longer(self, mocker, tmp_path):
+        """Test that video loops to fill audio duration when audio is longer."""
         video_path = tmp_path / "video.mp4"
         audio_path = tmp_path / "audio.mp3"
         output_path = tmp_path / "final.mp4"
 
         video_path.write_bytes(b"video")
         audio_path.write_bytes(b"audio")
+
+        # Mock probe_duration: audio (42s) longer than video (15s)
+        mocker.patch(
+            "app.services.media_service.probe_duration",
+            side_effect=lambda p: 42.0 if p.suffix == ".mp3" else 15.0,
+        )
 
         # Mock FFmpeg run
         mock_result = MagicMock()
@@ -191,8 +200,51 @@ class TestOverlayAudio:
         assert str(video_path) in args
         assert str(audio_path) in args
         assert str(output_path) in args
-        assert "-shortest" in args  # Uses -shortest to match streams
-        assert "-map" in args  # Map both video and audio
+
+        # Should use -stream_loop to loop video, NOT -shortest
+        assert "-stream_loop" in args
+        assert "-1" in args
+        assert "-shortest" not in args
+
+        # Should set duration to audio length
+        assert "-t" in args
+        t_idx = args.index("-t")
+        assert args[t_idx + 1] == "42.0"
+
+        assert result == output_path
+
+    def test_overlay_audio_pads_when_video_longer(self, mocker, tmp_path):
+        """Test audio padding with apad when video is longer (outro case)."""
+        video_path = tmp_path / "video.mp4"
+        audio_path = tmp_path / "audio.mp3"
+        output_path = tmp_path / "final.mp4"
+
+        video_path.write_bytes(b"video")
+        audio_path.write_bytes(b"audio")
+
+        # Mock probe_duration: video longer than audio (has outro) → uses apad
+        mocker.patch(
+            "app.services.media_service.probe_duration",
+            side_effect=lambda p: 8.0 if p.suffix == ".mp3" else 15.0,
+        )
+
+        # Mock FFmpeg run
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        output_path.write_bytes(b"final_video")
+
+        result = overlay_audio(video_path, audio_path, output_path)
+
+        # Verify FFmpeg used apad instead of -shortest
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert "-shortest" not in args
+        assert "-af" in args
+        af_idx = args.index("-af")
+        assert "apad" in args[af_idx + 1]
+        assert "-t" in args  # Duration flag to match video length
 
         assert result == output_path
 
@@ -201,11 +253,12 @@ class TestAssembleVideo:
     """Test full video assembly pipeline."""
 
     def test_assemble_video_success(self, mocker, tmp_path):
-        """Test complete video assembly pipeline."""
+        """Test complete video assembly pipeline (no outro)."""
         # Setup paths
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
+        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         # Create fake input clips
@@ -217,10 +270,16 @@ class TestAssembleVideo:
         clip2.write_bytes(b"clip2_data")
         audio_path.write_bytes(b"audio_data")
 
+        # overlay_audio mock must create the output file (shutil.move needs it)
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
         # Mock all FFmpeg operations
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
         mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
-        mocker.patch("app.services.media_service.overlay_audio", side_effect=lambda v, a, o: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
 
         # Mock validate_file_path to return the path unchanged
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
@@ -262,6 +321,7 @@ class TestAssembleVideo:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
+        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -278,9 +338,14 @@ class TestAssembleVideo:
             output_path.write_bytes(b"scaled")
             return output_path
 
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=mock_scale_and_pad)
         mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
-        mocker.patch("app.services.media_service.overlay_audio", side_effect=lambda v, a, o: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
         assemble_video(clip_paths=[clip], audio_path=audio, video_format="short")
@@ -293,6 +358,7 @@ class TestAssembleVideo:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
+        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -308,9 +374,14 @@ class TestAssembleVideo:
             output_path.write_bytes(b"scaled")
             return output_path
 
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=mock_scale_and_pad)
         mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
-        mocker.patch("app.services.media_service.overlay_audio", side_effect=lambda v, a, o: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
         assemble_video(clip_paths=[clip], audio_path=audio, video_format="long")
@@ -351,6 +422,7 @@ class TestAssembleVideo:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
+        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -368,9 +440,14 @@ class TestAssembleVideo:
             output_path.write_bytes(b"scaled")
             return output_path
 
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=mock_scale_and_pad)
         mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
-        mocker.patch("app.services.media_service.overlay_audio", side_effect=lambda v, a, o: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
         assemble_video(clip_paths=[clip], audio_path=audio)
@@ -379,3 +456,242 @@ class TestAssembleVideo:
         for work_dir in work_dirs:
             if work_dir.name.startswith("_work_"):
                 assert not work_dir.exists(), f"Work directory not cleaned up: {work_dir}"
+
+
+class TestConcatWithAudio:
+    """Test audio+video concatenation (narrated + outro)."""
+
+    def test_uses_filter_complex_not_demuxer(self, mocker, tmp_path):
+        """Verify _concat_with_audio uses -filter_complex concat filter."""
+        clip1 = tmp_path / "narrated.mp4"
+        clip2 = tmp_path / "outro.mp4"
+        output = tmp_path / "final.mp4"
+
+        clip1.write_bytes(b"narrated")
+        clip2.write_bytes(b"outro")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        _concat_with_audio([clip1, clip2], output)
+
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+
+        # Should use -filter_complex, NOT -f concat
+        assert "-filter_complex" in args
+        assert "-f" not in args
+
+        # Filter should reference both inputs
+        fc_idx = args.index("-filter_complex")
+        fc_value = args[fc_idx + 1]
+        assert "[0:v]" in fc_value
+        assert "[0:a]" in fc_value
+        assert "[1:v]" in fc_value
+        assert "[1:a]" in fc_value
+        assert "concat=n=2:v=1:a=1" in fc_value
+
+        # Should map outputs
+        assert "[outv]" in args
+        assert "[outa]" in args
+
+    def test_handles_three_clips(self, mocker, tmp_path):
+        """Verify filter_complex scales to 3+ clips."""
+        clips = [tmp_path / f"clip{i}.mp4" for i in range(3)]
+        for c in clips:
+            c.write_bytes(b"data")
+        output = tmp_path / "output.mp4"
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        _concat_with_audio(clips, output)
+
+        args = mock_run.call_args[0][0]
+        fc_idx = args.index("-filter_complex")
+        fc_value = args[fc_idx + 1]
+        assert "concat=n=3:v=1:a=1" in fc_value
+        assert "[2:v]" in fc_value
+        assert "[2:a]" in fc_value
+
+
+class TestNormalizeAudio:
+    """Test audio loudness normalization."""
+
+    def test_normalize_audio_success(self, mocker, tmp_path):
+        """Test successful audio normalization replaces file in-place."""
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_bytes(b"original_audio")
+        norm_path = tmp_path / "audio.norm.mp3"
+
+        def mock_ffmpeg_run(args, **kwargs):
+            # Simulate FFmpeg writing the normalized file
+            norm_path.write_bytes(b"normalized_audio")
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        mock_run = mocker.patch("subprocess.run", side_effect=mock_ffmpeg_run)
+
+        result = normalize_audio(audio_path)
+
+        assert result == audio_path
+        assert audio_path.read_bytes() == b"normalized_audio"
+        assert not norm_path.exists()  # temp file replaced original
+
+        # Verify FFmpeg was called with loudnorm filter
+        args = mock_run.call_args[0][0]
+        assert "ffmpeg" in args[0]
+        assert "-af" in args
+        af_idx = args.index("-af")
+        assert "loudnorm" in args[af_idx + 1]
+        assert "-14" in args[af_idx + 1]
+
+    def test_normalize_audio_ffmpeg_failure(self, mocker, tmp_path):
+        """Test that FFmpeg failure raises RuntimeError."""
+        audio_path = tmp_path / "audio.mp3"
+        audio_path.write_bytes(b"audio")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Error normalizing audio"
+        mocker.patch("subprocess.run", return_value=mock_result)
+
+        with pytest.raises(RuntimeError, match="FFmpeg"):
+            normalize_audio(audio_path)
+
+
+class TestBurnCaptions:
+    """Test caption burn-in via FFmpeg."""
+
+    def test_burn_captions_success(self, mocker, tmp_path):
+        """Test successful caption burn-in."""
+        video_path = tmp_path / "narrated.mp4"
+        ass_path = tmp_path / "captions.ass"
+        output_path = tmp_path / "captioned.mp4"
+
+        video_path.write_bytes(b"video")
+        ass_path.write_text("[Script Info]\nTitle: Test", encoding="utf-8")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        result = burn_captions(video_path, ass_path, output_path)
+
+        assert result == output_path
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert args[0] == "ffmpeg"
+        assert str(video_path) in args
+        assert str(output_path) in args
+        # Verify ass filter is present in -vf argument
+        vf_idx = args.index("-vf")
+        assert "ass=" in args[vf_idx + 1]
+        # Audio should be copied, not re-encoded
+        assert "-c:a" in args
+        ca_idx = args.index("-c:a")
+        assert args[ca_idx + 1] == "copy"
+
+    def test_burn_captions_ffmpeg_failure(self, mocker, tmp_path):
+        """Test that FFmpeg failure raises RuntimeError."""
+        video_path = tmp_path / "narrated.mp4"
+        ass_path = tmp_path / "captions.ass"
+        output_path = tmp_path / "captioned.mp4"
+
+        video_path.write_bytes(b"video")
+        ass_path.write_text("[Script Info]", encoding="utf-8")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Error burning captions"
+        mocker.patch("subprocess.run", return_value=mock_result)
+
+        with pytest.raises(RuntimeError, match="FFmpeg"):
+            burn_captions(video_path, ass_path, output_path)
+
+
+class TestAssembleVideoWithCaptions:
+    """Test assemble_video with caption support."""
+
+    def test_with_captions(self, mocker, tmp_path):
+        """Test that captions are burned when caption_ass_path is provided."""
+        mock_settings = MagicMock()
+        mock_settings.media_path = tmp_path
+        mock_settings.output_dir = tmp_path / "output"
+        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
+        mocker.patch("app.services.media_service.settings", mock_settings)
+
+        clip = tmp_path / "clip.mp4"
+        audio = tmp_path / "audio.mp3"
+        ass_file = tmp_path / "captions.ass"
+        clip.write_bytes(b"clip")
+        audio.write_bytes(b"audio")
+        ass_file.write_text("[Script Info]", encoding="utf-8")
+
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
+        def mock_burn(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"captioned")
+            return o
+
+        mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
+        mock_burn_fn = mocker.patch(
+            "app.services.media_service.burn_captions", side_effect=mock_burn
+        )
+        mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
+
+        result = assemble_video(
+            clip_paths=[clip],
+            audio_path=audio,
+            video_format="short",
+            project_id="test_cap",
+            caption_ass_path=ass_file,
+        )
+
+        # burn_captions should have been called
+        mock_burn_fn.assert_called_once()
+        assert result.name == "final_test_cap.mp4"
+
+    def test_without_captions_backward_compat(self, mocker, tmp_path):
+        """Test that assembly works without captions (backward compatible)."""
+        mock_settings = MagicMock()
+        mock_settings.media_path = tmp_path
+        mock_settings.output_dir = tmp_path / "output"
+        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
+        mocker.patch("app.services.media_service.settings", mock_settings)
+
+        clip = tmp_path / "clip.mp4"
+        audio = tmp_path / "audio.mp3"
+        clip.write_bytes(b"clip")
+        audio.write_bytes(b"audio")
+
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
+        mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
+        mock_burn_fn = mocker.patch("app.services.media_service.burn_captions")
+        mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
+
+        result = assemble_video(
+            clip_paths=[clip],
+            audio_path=audio,
+            video_format="short",
+            project_id="test_nocp",
+        )
+
+        # burn_captions should NOT have been called
+        mock_burn_fn.assert_not_called()
+        assert result.name == "final_test_nocp.mp4"

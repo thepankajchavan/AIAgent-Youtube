@@ -61,9 +61,23 @@ def sanitize_topic(topic: str, max_length: int = 200) -> str:
     if len(topic) > max_length:
         raise ValueError(f"Topic too long (max {max_length} characters)")
 
+    # 1b. Normalize common Unicode characters to ASCII equivalents
+    _unicode_replacements = {
+        "\u2014": "-",  # em dash → hyphen
+        "\u2013": "-",  # en dash → hyphen
+        "\u2018": "'",  # left single quote → apostrophe
+        "\u2019": "'",  # right single quote → apostrophe
+        "\u201c": '"',  # left double quote → double quote
+        "\u201d": '"',  # right double quote → double quote
+        "\u2026": "...",  # ellipsis → three dots
+        "\u00a0": " ",  # non-breaking space → space
+    }
+    for char, replacement in _unicode_replacements.items():
+        topic = topic.replace(char, replacement)
+
     # 2. Character whitelist validation
     # Allow: letters, numbers, spaces, basic punctuation
-    allowed_chars = re.compile(r'^[a-zA-Z0-9\s\-_,.!?\'"()]+$')
+    allowed_chars = re.compile(r'^[a-zA-Z0-9\s\-_,.!?\'"()/:;&#%@+]+$')
     if not allowed_chars.match(topic):
         logger.warning(f"Topic contains invalid characters: {topic[:50]}...")
         raise ValueError(

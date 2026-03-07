@@ -12,6 +12,7 @@ the pipeline uses the original fetch_visuals_task instead.
 from __future__ import annotations
 
 import asyncio
+import traceback
 from dataclasses import asdict
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from celery import Task
 from loguru import logger
 
 from app.core.celery_app import celery_app
+from app.core.dlq import DeadLetterQueue
 from app.models.video import VideoProject, VideoStatus
 from app.services.ai_video_service import (
     Scene,
@@ -27,6 +29,7 @@ from app.services.ai_video_service import (
 )
 from app.workers.db import get_sync_db
 from app.workers.events import emit_status_update
+from app.workers.resume_helper import PipelineResume
 
 
 def _run_async(coro):
@@ -53,6 +56,8 @@ def _mark_project_failed(project_id: str, error_message: str) -> None:
     max_retries=3,
     default_retry_delay=30,
     acks_late=True,
+    time_limit=120,
+    soft_time_limit=90,
 )
 def split_scenes_task(
     self: Task,
@@ -73,11 +78,13 @@ def split_scenes_task(
     project_id = pipeline_data["project_id"]
     script_data = pipeline_data["script_data"]
     video_format = pipeline_data["video_format"]
+    audio_duration = pipeline_data.get("audio_duration")
 
     logger.info(
-        "Task start: split_scenes — project={} script_len={}",
+        "Task start: split_scenes — project={} script_len={} audio_duration={}",
         project_id,
         len(script_data.get("script", "")),
+        f"{audio_duration:.1f}s" if audio_duration else "N/A",
     )
 
     with get_sync_db() as db:
@@ -99,15 +106,43 @@ def split_scenes_task(
                 telegram_message_id=project.telegram_message_id,
             )
 
-            # Call LLM for scene splitting
+            # Call LLM for scene splitting (with audio_duration for exact sync)
             scenes: list[Scene] = _run_async(
                 split_script_to_scenes(
                     script=script_data["script"],
                     video_format=video_format,
                     provider=project.provider,
                     visual_strategy=project.visual_strategy,
+                    audio_duration=audio_duration,
                 )
             )
+
+            # Validate total scene duration
+            total_scene_dur = sum(s.duration_seconds for s in scenes)
+            if audio_duration and audio_duration > 0:
+                drift = abs(total_scene_dur - audio_duration) / audio_duration
+                logger.info(
+                    "Scene duration check — scenes={:.1f}s audio={:.1f}s "
+                    "(drift={:.0%}) project={}",
+                    total_scene_dur,
+                    audio_duration,
+                    drift,
+                    project_id,
+                )
+            else:
+                word_count = len(script_data["script"].split())
+                estimated_read_time = (word_count / 150) * 60
+                if estimated_read_time > 0:
+                    drift = abs(total_scene_dur - estimated_read_time) / estimated_read_time
+                    logger.info(
+                        "Scene duration check — scenes={:.1f}s reading={:.1f}s "
+                        "({} words, drift={:.0%}) project={}",
+                        total_scene_dur,
+                        estimated_read_time,
+                        word_count,
+                        drift,
+                        project_id,
+                    )
 
             # Persist scene plan to DB
             scene_dicts = [asdict(s) for s in scenes]
@@ -115,11 +150,12 @@ def split_scenes_task(
             # Commit happens automatically on context exit
 
             logger.info(
-                "Scenes split — project={} total={} ai={} stock={}",
+                "Scenes split — project={} total={} ai={} stock={} duration={:.1f}s",
                 project_id,
                 len(scenes),
                 sum(1 for s in scenes if s.visual_type == "ai_generated"),
                 sum(1 for s in scenes if s.visual_type == "stock_footage"),
+                total_scene_dur,
             )
 
             return {
@@ -130,22 +166,40 @@ def split_scenes_task(
         except Exception as exc:
             logger.error("Scene splitting failed for project={}: {}", project_id, exc)
 
-            if project is not None:
-                emit_status_update(
-                    project_id=project_id,
-                    status="FAILED",
-                    telegram_user_id=project.telegram_user_id,
-                    telegram_chat_id=project.telegram_chat_id,
-                    telegram_message_id=project.telegram_message_id,
-                    extra={"error": str(exc)},
-                )
-
             if self.request.retries >= self.max_retries:
+                if project is not None:
+                    emit_status_update(
+                        project_id=project_id,
+                        status="FAILED",
+                        telegram_user_id=project.telegram_user_id,
+                        telegram_chat_id=project.telegram_chat_id,
+                        telegram_message_id=project.telegram_message_id,
+                        extra={"error": str(exc)},
+                    )
                 _mark_project_failed(
                     project_id,
                     f"Scene splitting failed after {self.max_retries + 1} attempts: {exc}",
                 )
+                try:
+                    asyncio.run(DeadLetterQueue.add_failed_task(
+                        task_id=self.request.id, task_name=self.name,
+                        args=self.request.args, kwargs=self.request.kwargs,
+                        exception=exc, traceback_str=traceback.format_exc(),
+                        project_id=project_id, update_project_status=False,
+                    ))
+                except Exception as dlq_exc:
+                    logger.error("Failed to add task to DLQ: {}", dlq_exc)
                 raise
+
+            if project is not None:
+                emit_status_update(
+                    project_id=project_id,
+                    status="SCENE_SPLITTING",
+                    telegram_user_id=project.telegram_user_id,
+                    telegram_chat_id=project.telegram_chat_id,
+                    telegram_message_id=project.telegram_message_id,
+                    extra={"retry": self.request.retries + 1},
+                )
             raise self.retry(exc=exc)
 
 
@@ -231,6 +285,9 @@ def generate_visuals_task(
 
             # Update scene plan with generation results (paths, costs, providers)
             project.scene_plan = {"scenes": [asdict(s) for s in scenes]}
+
+            # Mark step completed for resume tracking
+            PipelineResume.mark_step_completed(project, "video")
             # Commit happens automatically on context exit
 
             logger.info(
@@ -248,20 +305,38 @@ def generate_visuals_task(
         except Exception as exc:
             logger.error("Visual generation failed for project={}: {}", project_id, exc)
 
-            if project is not None:
-                emit_status_update(
-                    project_id=project_id,
-                    status="FAILED",
-                    telegram_user_id=project.telegram_user_id,
-                    telegram_chat_id=project.telegram_chat_id,
-                    telegram_message_id=project.telegram_message_id,
-                    extra={"error": str(exc)},
-                )
-
             if self.request.retries >= self.max_retries:
+                if project is not None:
+                    emit_status_update(
+                        project_id=project_id,
+                        status="FAILED",
+                        telegram_user_id=project.telegram_user_id,
+                        telegram_chat_id=project.telegram_chat_id,
+                        telegram_message_id=project.telegram_message_id,
+                        extra={"error": str(exc)},
+                    )
                 _mark_project_failed(
                     project_id,
                     f"Visual generation failed after {self.max_retries + 1} attempts: {exc}",
                 )
+                try:
+                    asyncio.run(DeadLetterQueue.add_failed_task(
+                        task_id=self.request.id, task_name=self.name,
+                        args=self.request.args, kwargs=self.request.kwargs,
+                        exception=exc, traceback_str=traceback.format_exc(),
+                        project_id=project_id, update_project_status=False,
+                    ))
+                except Exception as dlq_exc:
+                    logger.error("Failed to add task to DLQ: {}", dlq_exc)
                 raise
+
+            if project is not None:
+                emit_status_update(
+                    project_id=project_id,
+                    status="VIDEO_GENERATING",
+                    telegram_user_id=project.telegram_user_id,
+                    telegram_chat_id=project.telegram_chat_id,
+                    telegram_message_id=project.telegram_message_id,
+                    extra={"retry": self.request.retries + 1},
+                )
             raise self.retry(exc=exc)

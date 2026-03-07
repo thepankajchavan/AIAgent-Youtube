@@ -77,6 +77,7 @@ async def trigger_pipeline(
         provider=request.provider.value,
         visual_strategy=visual_strategy,
         ai_video_provider=request.ai_video_provider,
+        target_duration=request.target_duration,
     )
     db.add(project)
     await db.flush()  # get the generated UUID before commit
@@ -102,6 +103,7 @@ async def trigger_pipeline(
             skip_upload=request.skip_upload,
             visual_strategy=visual_strategy,
             ai_video_provider=request.ai_video_provider,
+            target_duration=request.target_duration,
         )
 
         # 3. Store the Celery task ID on the project
@@ -165,6 +167,7 @@ async def trigger_batch_pipeline(
                 provider=req.provider.value,
                 visual_strategy=visual_strategy,
                 ai_video_provider=req.ai_video_provider,
+                target_duration=req.target_duration,
             )
             db.add(project)
             await db.flush()
@@ -180,6 +183,7 @@ async def trigger_batch_pipeline(
                     skip_upload=req.skip_upload,
                     visual_strategy=visual_strategy,
                     ai_video_provider=req.ai_video_provider,
+                    target_duration=req.target_duration,
                 )
 
                 project.celery_task_id = celery_result.id

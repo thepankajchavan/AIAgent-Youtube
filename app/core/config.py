@@ -48,7 +48,13 @@ class Settings(BaseSettings):
 
     # ── ElevenLabs ───────────────────────────────────────────
     elevenlabs_api_key: str = ""
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_voice_id: str = "pNInz6obpgDQGcFmaJgB"  # Adam (deep male)
+    elevenlabs_model: str = "eleven_turbo_v2_5"
+    elevenlabs_output_format: str = "mp3_44100_192"
+    elevenlabs_stability: float = 0.55
+    elevenlabs_similarity_boost: float = 0.80
+    elevenlabs_style: float = 0.35
+    elevenlabs_monthly_char_limit: int = 100_000
 
     # ── Pexels ───────────────────────────────────────────────
     pexels_api_key: str = ""
@@ -71,26 +77,46 @@ class Settings(BaseSettings):
         description="Fallback AI video provider",
     )
     runway_api_key: str = ""
-    runway_model: str = "gen3a_turbo"
+    runway_model: str = "gen4.5"
     stability_api_key: str = ""
     kling_access_key: str = ""
     kling_secret_key: str = ""
     ai_video_max_cost_per_video: float = Field(
-        default=5.0,
-        description="Maximum USD cost per video for AI generation",
+        default=5.00,
+        description="Maximum USD cost per video for AI generation (3 scenes × 10s × $0.12)",
     )
     ai_video_max_daily_spend: float = Field(
-        default=50.0,
-        description="Maximum daily USD spend on AI video generation",
+        default=10.00,
+        description="Maximum daily USD spend on AI video generation (2 shorts/day + buffer)",
     )
     ai_video_timeout: int = Field(
         default=300,
         description="Timeout in seconds for a single AI video generation",
     )
 
+    # ── Web Search (Tavily) ─────────────────────────────────
+    tavily_api_key: str = ""
+    web_search_enabled: bool = Field(
+        default=True,
+        description="Enable web search for real-time context before script generation",
+    )
+    web_search_max_results: int = Field(
+        default=5,
+        description="Number of search results to fetch for context",
+    )
+
+    # ── Captions (Word-level via Whisper) ────────────────────
+    captions_enabled: bool = True
+    captions_font: str = "Arial"
+    captions_font_size: int = 18
+    captions_max_words_per_chunk: int = 3
+    captions_uppercase: bool = True
+
     # ── YouTube ──────────────────────────────────────────────
     youtube_client_secrets_file: str = "client_secrets.json"
     youtube_token_file: str = "youtube_token.json"
+    youtube_default_privacy: str = "public"
+    youtube_default_category: str = "education"
 
     # ── Telegram Bot ─────────────────────────────────────────
     telegram_bot_token: str = ""
@@ -129,6 +155,10 @@ class Settings(BaseSettings):
 
     # ── Media Paths ──────────────────────────────────────────
     media_dir: str = "media"
+    outro_video_path: str = Field(
+        default="media/assets/outro.mp4",
+        description="Pre-made outro clip appended to every short (like/subscribe CTA)",
+    )
 
     @property
     def media_path(self) -> Path:
@@ -149,6 +179,10 @@ class Settings(BaseSettings):
     @property
     def ai_video_dir(self) -> Path:
         return self.media_path / "ai_video"
+
+    @property
+    def captions_dir(self) -> Path:
+        return self.media_path / "captions"
 
 
 @lru_cache(maxsize=1)

@@ -38,10 +38,11 @@ def _make_project(status=VideoStatus.PENDING, **kwargs):
 class TestScriptTask:
     """Test generate_script_task worker."""
 
+    @patch("app.workers.script_tasks.PipelineResume")
     @patch("app.workers.script_tasks.emit_status_update")
     @patch("app.workers.script_tasks.get_sync_db")
     @patch("app.workers.script_tasks._run_async")
-    def test_script_task_success(self, mock_run_async, mock_db, mock_emit):
+    def test_script_task_success(self, mock_run_async, mock_db, mock_emit, mock_resume):
         """Test successful script generation stores result and returns pipeline data."""
         from app.workers.script_tasks import generate_script_task
 
@@ -67,15 +68,18 @@ class TestScriptTask:
         assert result["project_id"] == "test-project-uuid"
         assert result["script_data"] == script_data
         assert result["video_format"] == "short"
+        assert result["provider"] == "openai"
+        assert "visual_strategy" in result
         assert project.script == script_data["script"]
         project.validate_status_transition.assert_called_once_with(VideoStatus.SCRIPT_GENERATING)
 
+    @patch("app.workers.script_tasks.DeadLetterQueue")
     @patch("app.workers.script_tasks._mark_project_failed")
     @patch("app.workers.script_tasks.emit_status_update")
     @patch("app.workers.script_tasks.get_sync_db")
     @patch("app.workers.script_tasks._run_async")
     def test_script_task_content_moderation_blocks(
-        self, mock_run_async, mock_db, mock_emit, mock_mark_failed
+        self, mock_run_async, mock_db, mock_emit, mock_mark_failed, mock_dlq
     ):
         """Test that content moderation rejection propagates as failure."""
         from app.workers.script_tasks import generate_script_task
@@ -101,10 +105,12 @@ class TestScriptTask:
 class TestAudioTask:
     """Test generate_audio_task worker."""
 
+    @patch("app.workers.media_tasks.PipelineResume")
+    @patch("app.workers.media_tasks.probe_duration", return_value=35.0)
     @patch("app.workers.media_tasks.emit_status_update")
     @patch("app.workers.media_tasks.get_sync_db")
     @patch("app.workers.media_tasks._run_async")
-    def test_audio_task_success(self, mock_run_async, mock_db, mock_emit, tmp_path):
+    def test_audio_task_success(self, mock_run_async, mock_db, mock_emit, mock_probe, mock_resume, tmp_path):
         """Test successful audio generation stores path and returns pipeline data."""
         from app.workers.media_tasks import generate_audio_task
 
@@ -124,6 +130,7 @@ class TestAudioTask:
         result = generate_audio_task(pipeline_data=pipeline_data)
 
         assert result["audio_path"] == str(audio_path)
+        assert result["audio_duration"] == 35.0
         assert result["project_id"] == "test-project-uuid"
         assert project.audio_path == str(audio_path)
         project.validate_status_transition.assert_called_once_with(VideoStatus.AUDIO_GENERATING)
@@ -132,11 +139,12 @@ class TestAudioTask:
 class TestVisualTask:
     """Test fetch_visuals_task worker."""
 
+    @patch("app.workers.media_tasks.PipelineResume")
     @patch("app.core.config.get_settings")
     @patch("app.workers.media_tasks.emit_status_update")
     @patch("app.workers.media_tasks.get_sync_db")
     @patch("app.workers.media_tasks._run_async")
-    def test_visual_task_success(self, mock_run_async, mock_db, mock_emit, mock_settings, tmp_path):
+    def test_visual_task_success(self, mock_run_async, mock_db, mock_emit, mock_settings, mock_resume, tmp_path):
         """Test successful visual fetch stores paths and returns pipeline data."""
         from app.workers.media_tasks import fetch_visuals_task
 
@@ -164,11 +172,52 @@ class TestVisualTask:
         assert result["project_id"] == "test-project-uuid"
         project.validate_status_transition.assert_called_once_with(VideoStatus.VIDEO_GENERATING)
 
+    @patch("app.workers.media_tasks.PipelineResume")
     @patch("app.core.config.get_settings")
     @patch("app.workers.media_tasks.emit_status_update")
     @patch("app.workers.media_tasks.get_sync_db")
     @patch("app.workers.media_tasks._run_async")
-    def test_visual_task_no_clips_found(self, mock_run_async, mock_db, mock_emit, mock_settings):
+    def test_visual_task_uses_scene_keywords(
+        self, mock_run_async, mock_db, mock_emit, mock_settings, mock_resume, tmp_path
+    ):
+        """Test that scene-level search_keywords are used for Pexels queries."""
+        from app.workers.media_tasks import fetch_visuals_task
+
+        mock_settings.return_value = MagicMock(ai_video_enabled=False)
+
+        clip1 = tmp_path / "clip1.mp4"
+        clip1.write_bytes(b"video1")
+        mock_run_async.return_value = [clip1]
+
+        project = _make_project(status=VideoStatus.SCRIPT_GENERATING)
+        mock_db.side_effect = _make_mock_db(project)
+
+        pipeline_data = {
+            "project_id": "test-project-uuid",
+            "script_data": {
+                "script": "Hook text.\n\nBuild text.",
+                "tags": ["generic_tag"],
+                "scenes": [
+                    {"narration": "Hook text.", "search_keywords": ["aerial city night"]},
+                    {"narration": "Build text.", "search_keywords": ["ocean waves sunset"]},
+                ],
+            },
+            "video_format": "short",
+        }
+
+        result = fetch_visuals_task(pipeline_data=pipeline_data)
+
+        # Verify fetch_clips was called with scene keywords, not generic tags
+        call_args = mock_run_async.call_args
+        assert call_args is not None
+        assert result["project_id"] == "test-project-uuid"
+
+    @patch("app.workers.media_tasks.PipelineResume")
+    @patch("app.core.config.get_settings")
+    @patch("app.workers.media_tasks.emit_status_update")
+    @patch("app.workers.media_tasks.get_sync_db")
+    @patch("app.workers.media_tasks._run_async")
+    def test_visual_task_no_clips_found(self, mock_run_async, mock_db, mock_emit, mock_settings, mock_resume):
         """Test that empty clip list still returns (no error unless assembly checks)."""
         from app.workers.media_tasks import fetch_visuals_task
 
@@ -191,17 +240,22 @@ class TestVisualTask:
 class TestAssemblyTask:
     """Test assemble_video_task worker."""
 
+    @patch("app.workers.assembly_tasks.PipelineResume")
+    @patch("app.workers.assembly_tasks.generate_thumbnail")
+    @patch("app.workers.assembly_tasks.probe_duration", return_value=35.0)
     @patch("app.workers.assembly_tasks.emit_status_update")
     @patch("app.workers.assembly_tasks.get_sync_db")
     @patch("app.workers.assembly_tasks.assemble_video")
     def test_assembly_task_merges_parallel_results(
-        self, mock_assemble, mock_db, mock_emit, tmp_path
+        self, mock_assemble, mock_db, mock_emit, mock_probe, mock_thumbnail, mock_resume, tmp_path
     ):
         """Test that chord callback correctly merges audio and visual results."""
         from app.workers.assembly_tasks import assemble_video_task
 
         output_path = tmp_path / "final.mp4"
+        output_path.write_bytes(b"fake_video_data" * 1000)  # Must exist for validation
         mock_assemble.return_value = output_path
+        mock_thumbnail.return_value = tmp_path / "thumb.jpg"
 
         project = _make_project(status=VideoStatus.AUDIO_GENERATING)
         mock_db.side_effect = _make_mock_db(project)
@@ -213,6 +267,7 @@ class TestAssemblyTask:
                 "script_data": {"script": "test"},
                 "video_format": "short",
                 "audio_path": "/media/audio/test.mp3",
+                "audio_duration": 35.0,
             },
             {
                 "project_id": "test-project-uuid",
@@ -222,17 +277,54 @@ class TestAssemblyTask:
             },
         ]
 
-        result = assemble_video_task(parallel_results=parallel_results)
+        result = assemble_video_task(pipeline_input=parallel_results)
 
         assert result["output_path"] == str(output_path)
         assert project.output_path == str(output_path)
         mock_assemble.assert_called_once()
         project.validate_status_transition.assert_called_once_with(VideoStatus.ASSEMBLING)
 
+    @patch("app.workers.assembly_tasks.PipelineResume")
+    @patch("app.workers.assembly_tasks.generate_thumbnail")
+    @patch("app.workers.assembly_tasks.probe_duration", return_value=35.0)
+    @patch("app.workers.assembly_tasks.emit_status_update")
+    @patch("app.workers.assembly_tasks.get_sync_db")
+    @patch("app.workers.assembly_tasks.assemble_video")
+    def test_assembly_task_sequential_dict_input(
+        self, mock_assemble, mock_db, mock_emit, mock_probe, mock_thumbnail, mock_resume, tmp_path
+    ):
+        """Test assembly with sequential dict input (AI path — not chord callback)."""
+        from app.workers.assembly_tasks import assemble_video_task
+
+        output_path = tmp_path / "final.mp4"
+        output_path.write_bytes(b"fake_video_data" * 1000)
+        mock_assemble.return_value = output_path
+        mock_thumbnail.return_value = tmp_path / "thumb.jpg"
+
+        project = _make_project(status=VideoStatus.AUDIO_GENERATING)
+        mock_db.side_effect = _make_mock_db(project)
+
+        # Sequential input: single dict with all keys (AI path)
+        pipeline_data = {
+            "project_id": "test-project-uuid",
+            "script_data": {"script": "test"},
+            "video_format": "short",
+            "audio_path": "/media/audio/test.mp3",
+            "audio_duration": 35.0,
+            "clip_paths": ["/media/video/clip1.mp4", "/media/video/clip2.mp4"],
+        }
+
+        result = assemble_video_task(pipeline_input=pipeline_data)
+
+        assert result["output_path"] == str(output_path)
+        assert project.output_path == str(output_path)
+        mock_assemble.assert_called_once()
+
+    @patch("app.workers.assembly_tasks.DeadLetterQueue")
     @patch("app.workers.assembly_tasks._mark_project_failed")
     @patch("app.workers.assembly_tasks.emit_status_update")
     @patch("app.workers.assembly_tasks.get_sync_db")
-    def test_assembly_task_missing_audio_fails(self, mock_db, mock_emit, mock_mark_failed):
+    def test_assembly_task_missing_audio_fails(self, mock_db, mock_emit, mock_mark_failed, mock_dlq):
         """Test that missing audio_path in parallel results raises error."""
         from app.workers.assembly_tasks import assemble_video_task
 
@@ -253,15 +345,16 @@ class TestAssemblyTask:
         ]
 
         with patch.object(assemble_video_task, "max_retries", 0), pytest.raises(ValueError):
-            assemble_video_task(parallel_results=parallel_results)
+            assemble_video_task(pipeline_input=parallel_results)
 
         mock_mark_failed.assert_called_once()
         assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
 
+    @patch("app.workers.assembly_tasks.DeadLetterQueue")
     @patch("app.workers.assembly_tasks._mark_project_failed")
     @patch("app.workers.assembly_tasks.emit_status_update")
     @patch("app.workers.assembly_tasks.get_sync_db")
-    def test_assembly_task_missing_clips_fails(self, mock_db, mock_emit, mock_mark_failed):
+    def test_assembly_task_missing_clips_fails(self, mock_db, mock_emit, mock_mark_failed, mock_dlq):
         """Test that missing clip_paths in parallel results raises error."""
         from app.workers.assembly_tasks import assemble_video_task
 
@@ -282,7 +375,7 @@ class TestAssemblyTask:
         ]
 
         with patch.object(assemble_video_task, "max_retries", 0), pytest.raises(ValueError):
-            assemble_video_task(parallel_results=parallel_results)
+            assemble_video_task(pipeline_input=parallel_results)
 
         mock_mark_failed.assert_called_once()
         assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
@@ -291,12 +384,20 @@ class TestAssemblyTask:
 class TestUploadTask:
     """Test upload_to_youtube_task worker."""
 
+    @patch("app.workers.upload_tasks.set_thumbnail")
+    @patch("app.workers.upload_tasks.PipelineResume")
     @patch("app.workers.upload_tasks.emit_status_update")
     @patch("app.workers.upload_tasks.get_sync_db")
     @patch("app.workers.upload_tasks.upload_video")
-    def test_upload_task_success(self, mock_upload, mock_db, mock_emit, tmp_path):
-        """Test successful YouTube upload sets COMPLETED status."""
+    def test_upload_task_success(self, mock_upload, mock_db, mock_emit, mock_resume, mock_thumb, tmp_path, mocker):
+        """Test successful YouTube upload sets COMPLETED status with public privacy."""
         from app.workers.upload_tasks import upload_to_youtube_task
+
+        # Mock settings for upload task
+        mock_settings = MagicMock()
+        mock_settings.youtube_default_privacy = "public"
+        mock_settings.youtube_default_category = "education"
+        mocker.patch("app.workers.upload_tasks.settings", mock_settings)
 
         output_file = tmp_path / "final.mp4"
         output_file.write_bytes(b"video_data")
@@ -314,7 +415,9 @@ class TestUploadTask:
             "script_data": {
                 "title": "Test Video",
                 "description": "Test desc",
-                "tags": ["test"],
+                "tags": ["test", "science"],
+                "hashtags": ["#Shorts", "#Science", "#Facts"],
+                "category": "science",
             },
             "video_format": "short",
             "output_path": str(output_file),
@@ -328,10 +431,17 @@ class TestUploadTask:
         assert project.youtube_video_id == "yt_abc123"
         project.validate_status_transition.assert_called_once_with(VideoStatus.UPLOADING)
 
+        # Verify upload_video was called with correct args
+        call_kwargs = mock_upload.call_args.kwargs
+        assert call_kwargs["privacy_status"] == "public"
+        assert call_kwargs["category"] == "science"
+        assert call_kwargs["hashtags"] == ["#Shorts", "#Science", "#Facts"]
+
+    @patch("app.workers.upload_tasks.DeadLetterQueue")
     @patch("app.workers.upload_tasks._mark_project_failed")
     @patch("app.workers.upload_tasks.emit_status_update")
     @patch("app.workers.upload_tasks.get_sync_db")
-    def test_upload_task_missing_file_fails(self, mock_db, mock_emit, mock_mark_failed):
+    def test_upload_task_missing_file_fails(self, mock_db, mock_emit, mock_mark_failed, mock_dlq):
         """Test that missing output file raises FileNotFoundError."""
         from app.workers.upload_tasks import upload_to_youtube_task
 
@@ -352,10 +462,11 @@ class TestUploadTask:
         mock_mark_failed.assert_called_once()
         assert mock_mark_failed.call_args[0][0] == "test-project-uuid"
 
+    @patch("app.workers.upload_tasks.DeadLetterQueue")
     @patch("app.workers.upload_tasks._mark_project_failed")
     @patch("app.workers.upload_tasks.emit_status_update")
     @patch("app.workers.upload_tasks.get_sync_db")
-    def test_upload_task_no_output_path_fails(self, mock_db, mock_emit, mock_mark_failed):
+    def test_upload_task_no_output_path_fails(self, mock_db, mock_emit, mock_mark_failed, mock_dlq):
         """Test that missing output_path in pipeline data raises error."""
         from app.workers.upload_tasks import upload_to_youtube_task
 
@@ -380,12 +491,13 @@ class TestUploadTask:
 class TestTaskFailureHandling:
     """Test that tasks set FAILED status and error_message on errors."""
 
+    @patch("app.workers.script_tasks.DeadLetterQueue")
     @patch("app.workers.script_tasks._mark_project_failed")
     @patch("app.workers.script_tasks.emit_status_update")
     @patch("app.workers.script_tasks.get_sync_db")
     @patch("app.workers.script_tasks._run_async")
     def test_task_sets_failed_status_on_error(
-        self, mock_run_async, mock_db, mock_emit, mock_mark_failed
+        self, mock_run_async, mock_db, mock_emit, mock_mark_failed, mock_dlq
     ):
         """Test that task failure calls _mark_project_failed with error details."""
         from app.workers.script_tasks import generate_script_task

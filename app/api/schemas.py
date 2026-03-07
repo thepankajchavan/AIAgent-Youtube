@@ -74,6 +74,12 @@ class PipelineRequest(BaseModel):
         default=None,
         description="AI video provider override (uses config default if None).",
     )
+    target_duration: int | None = Field(
+        default=None,
+        ge=15,
+        le=120,
+        description="Target video duration in seconds (15-120). Adjusts script word count.",
+    )
 
 
 class PipelineResponse(BaseModel):

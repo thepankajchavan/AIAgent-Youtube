@@ -7,6 +7,10 @@ Implements circuit breaker pattern for:
 - ElevenLabs
 - Pexels (with fallback to placeholder)
 - YouTube
+- Runway
+- Stability AI
+- Kling AI
+- Whisper (OpenAI)
 
 Circuit Breaker States:
 - CLOSED: Normal operation, requests pass through
@@ -24,20 +28,78 @@ from pybreaker import CircuitBreaker, CircuitBreakerError
 
 # ── Circuit Breakers for External Services ────────────────────
 
-# OpenAI circuit breaker - fail after 5 failures in 60 seconds, recover after 120 seconds
+# LLM providers
 openai_breaker = CircuitBreaker(fail_max=5, reset_timeout=120, name="OpenAI API")
-
-# Anthropic circuit breaker
 anthropic_breaker = CircuitBreaker(fail_max=5, reset_timeout=120, name="Anthropic API")
 
-# ElevenLabs circuit breaker
+# Media providers
 elevenlabs_breaker = CircuitBreaker(fail_max=3, reset_timeout=60, name="ElevenLabs API")
-
-# Pexels circuit breaker
 pexels_breaker = CircuitBreaker(fail_max=5, reset_timeout=60, name="Pexels API")
 
-# YouTube circuit breaker
+# Upload
 youtube_breaker = CircuitBreaker(fail_max=3, reset_timeout=120, name="YouTube API")
+
+# AI video providers
+runway_breaker = CircuitBreaker(fail_max=3, reset_timeout=120, name="Runway API")
+stability_breaker = CircuitBreaker(fail_max=3, reset_timeout=120, name="Stability API")
+kling_breaker = CircuitBreaker(fail_max=3, reset_timeout=120, name="Kling API")
+
+# Transcription
+whisper_breaker = CircuitBreaker(fail_max=3, reset_timeout=60, name="Whisper API")
+
+# ── All breakers registry ────────────────────────────────────
+
+_ALL_BREAKERS: dict[str, CircuitBreaker] = {
+    "openai": openai_breaker,
+    "anthropic": anthropic_breaker,
+    "elevenlabs": elevenlabs_breaker,
+    "pexels": pexels_breaker,
+    "youtube": youtube_breaker,
+    "runway": runway_breaker,
+    "stability": stability_breaker,
+    "kling": kling_breaker,
+    "whisper": whisper_breaker,
+}
+
+
+# ── Generic breaker decorator (auto-detect sync/async) ──────
+
+
+def _wrap_with_breaker(
+    breaker: CircuitBreaker,
+    func: Callable,
+    on_open: Callable | None = None,
+) -> Callable:
+    """Wrap a function with a circuit breaker, auto-detecting sync/async."""
+    if asyncio.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            try:
+                return await breaker.call_async(func, *args, **kwargs)
+            except CircuitBreakerError as e:
+                logger.warning("{} circuit breaker open: {}", breaker.name, e)
+                if on_open:
+                    result = on_open(*args, **kwargs)
+                    if asyncio.iscoroutine(result):
+                        return await result
+                    return result
+                raise
+
+        return async_wrapper
+    else:
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            try:
+                return breaker.call(func, *args, **kwargs)
+            except CircuitBreakerError as e:
+                logger.warning("{} circuit breaker open: {}", breaker.name, e)
+                if on_open:
+                    return on_open(*args, **kwargs)
+                raise
+
+        return sync_wrapper
 
 
 # ── Circuit Breaker Decorators ─────────────────────────────────
@@ -48,35 +110,22 @@ def with_openai_breaker(fallback_to_anthropic: bool = True):
     Decorator to wrap OpenAI calls with circuit breaker.
 
     If circuit is open and fallback is enabled, tries Anthropic instead.
-
-    Args:
-        fallback_to_anthropic: Whether to fallback to Anthropic on circuit open
-
-    Returns:
-        Decorated function
     """
 
     def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            try:
-                # Try OpenAI through circuit breaker
-                return await openai_breaker.call_async(func, *args, **kwargs)
-            except CircuitBreakerError as e:
-                logger.warning(f"OpenAI circuit breaker open: {e}")
+        if fallback_to_anthropic:
 
-                if fallback_to_anthropic:
-                    logger.info("Falling back to Anthropic API")
-                    # Import here to avoid circular dependency
-                    from app.services.llm_service import generate_script_anthropic
+            async def _openai_fallback(*args, **kwargs):
+                logger.info("Falling back to Anthropic API")
+                from app.services.llm_service import generate_script_anthropic
 
-                    topic = kwargs.get("topic") or args[0] if args else None
-                    if topic:
-                        return await generate_script_anthropic(topic)
+                topic = kwargs.get("topic") or args[0] if args else None
+                if topic:
+                    return await generate_script_anthropic(topic)
+                raise CircuitBreakerError("OpenAI circuit open, no fallback topic")
 
-                raise
-
-        return wrapper
+            return _wrap_with_breaker(openai_breaker, func, on_open=_openai_fallback)
+        return _wrap_with_breaker(openai_breaker, func)
 
     return decorator
 
@@ -85,11 +134,7 @@ def with_anthropic_breaker():
     """Decorator to wrap Anthropic calls with circuit breaker."""
 
     def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await anthropic_breaker.call_async(func, *args, **kwargs)
-
-        return wrapper
+        return _wrap_with_breaker(anthropic_breaker, func)
 
     return decorator
 
@@ -98,11 +143,7 @@ def with_elevenlabs_breaker():
     """Decorator to wrap ElevenLabs calls with circuit breaker."""
 
     def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await elevenlabs_breaker.call_async(func, *args, **kwargs)
-
-        return wrapper
+        return _wrap_with_breaker(elevenlabs_breaker, func)
 
     return decorator
 
@@ -112,34 +153,21 @@ def with_pexels_breaker(fallback_to_placeholder: bool = True):
     Decorator to wrap Pexels calls with circuit breaker.
 
     If circuit is open and fallback is enabled, uses placeholder images.
-
-    Args:
-        fallback_to_placeholder: Whether to use placeholders on circuit open
-
-    Returns:
-        Decorated function
     """
 
     def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            try:
-                return await pexels_breaker.call_async(func, *args, **kwargs)
-            except CircuitBreakerError as e:
-                logger.warning(f"Pexels circuit breaker open: {e}")
+        if fallback_to_placeholder:
 
-                if fallback_to_placeholder:
-                    logger.info("Falling back to placeholder videos")
-                    # Use placeholder video (black screen with text)
-                    from app.services.visual_service import create_placeholder_video
+            async def _pexels_fallback(*args, **kwargs):
+                logger.info("Falling back to placeholder videos")
+                from app.services.visual_service import create_placeholder_video
 
-                    query = kwargs.get("query") or args[0] if args else "video content"
-                    duration = kwargs.get("duration", 30)
-                    return await create_placeholder_video(query, duration)
+                query = kwargs.get("query") or args[0] if args else "video content"
+                duration = kwargs.get("duration", 30)
+                return await create_placeholder_video(query, duration)
 
-                raise
-
-        return wrapper
+            return _wrap_with_breaker(pexels_breaker, func, on_open=_pexels_fallback)
+        return _wrap_with_breaker(pexels_breaker, func)
 
     return decorator
 
@@ -148,11 +176,43 @@ def with_youtube_breaker():
     """Decorator to wrap YouTube API calls with circuit breaker."""
 
     def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await youtube_breaker.call_async(func, *args, **kwargs)
+        return _wrap_with_breaker(youtube_breaker, func)
 
-        return wrapper
+    return decorator
+
+
+def with_runway_breaker():
+    """Decorator to wrap Runway API calls with circuit breaker."""
+
+    def decorator(func: Callable):
+        return _wrap_with_breaker(runway_breaker, func)
+
+    return decorator
+
+
+def with_stability_breaker():
+    """Decorator to wrap Stability AI calls with circuit breaker."""
+
+    def decorator(func: Callable):
+        return _wrap_with_breaker(stability_breaker, func)
+
+    return decorator
+
+
+def with_kling_breaker():
+    """Decorator to wrap Kling AI calls with circuit breaker."""
+
+    def decorator(func: Callable):
+        return _wrap_with_breaker(kling_breaker, func)
+
+    return decorator
+
+
+def with_whisper_breaker():
+    """Decorator to wrap Whisper API calls with circuit breaker."""
+
+    def decorator(func: Callable):
+        return _wrap_with_breaker(whisper_breaker, func)
 
     return decorator
 
@@ -219,22 +279,13 @@ def get_circuit_breaker_states() -> dict[str, dict[str, Any]]:
     Returns:
         Dictionary mapping service names to their circuit breaker states
     """
-    breakers = {
-        "openai": openai_breaker,
-        "anthropic": anthropic_breaker,
-        "elevenlabs": elevenlabs_breaker,
-        "pexels": pexels_breaker,
-        "youtube": youtube_breaker,
-    }
-
     states = {}
-    for name, breaker in breakers.items():
+    for name, breaker in _ALL_BREAKERS.items():
         states[name] = {
             "state": str(breaker.current_state),
             "fail_counter": breaker.fail_counter,
             "fail_max": breaker.fail_max,
             "reset_timeout": breaker.reset_timeout,
-            "last_failure": str(breaker.last_failure_time) if breaker.last_failure_time else None,
         }
 
     return states
@@ -245,25 +296,17 @@ def reset_circuit_breaker(service: str) -> bool:
     Manually reset a circuit breaker (for testing or admin override).
 
     Args:
-        service: Service name (openai, anthropic, elevenlabs, pexels, youtube)
+        service: Service name (openai, anthropic, elevenlabs, pexels, youtube,
+                 runway, stability, kling, whisper)
 
     Returns:
         True if reset successful, False if service not found
     """
-    breakers = {
-        "openai": openai_breaker,
-        "anthropic": anthropic_breaker,
-        "elevenlabs": elevenlabs_breaker,
-        "pexels": pexels_breaker,
-        "youtube": youtube_breaker,
-    }
-
-    breaker = breakers.get(service.lower())
+    breaker = _ALL_BREAKERS.get(service.lower())
     if not breaker:
         return False
 
-    breaker._state = breaker.closed_state
-    breaker.fail_counter = 0
+    breaker.close()
     logger.info(f"Circuit breaker for {service} manually reset")
 
     return True
