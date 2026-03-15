@@ -5,7 +5,7 @@ python-multipart==0.0.20
 
 # ── Background Tasks ──────────────────────────────────────────
 celery[redis]==5.4.0
-redis==5.2.1
+redis==7.2.1
 
 # ── Database ──────────────────────────────────────────────────
 sqlalchemy[asyncio]==2.0.36
