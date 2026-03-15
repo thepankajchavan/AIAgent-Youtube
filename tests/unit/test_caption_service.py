@@ -163,7 +163,7 @@ class TestGenerateAssFile:
         assert "PlayResX: 1080" in content
         assert "PlayResY: 1920" in content
         assert "[V4+ Styles]" in content
-        assert "Style: Default,Arial,18" in content
+        assert "Style: Default,Arial,28" in content
         assert "[Events]" in content
 
         # Check dialogue lines

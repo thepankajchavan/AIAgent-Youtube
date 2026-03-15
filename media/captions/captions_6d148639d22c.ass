@@ -1,0 +1,47 @@
+[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.22,Default,,0,0,0,,THE T20 WORLD
+Dialogue: 0,0:00:01.22,0:00:02.92,Default,,0,0,0,,CUP 2026 FINAL
+Dialogue: 0,0:00:02.92,0:00:03.50,Default,,0,0,0,,IS SET FOR
+Dialogue: 0,0:00:03.50,0:00:04.42,Default,,0,0,0,,AN EPIC CLASH
+Dialogue: 0,0:00:04.42,0:00:05.38,Default,,0,0,0,,BETWEEN INDIA AND
+Dialogue: 0,0:00:05.38,0:00:06.12,Default,,0,0,0,,NEW ZEALAND IN
+Dialogue: 0,0:00:06.12,0:00:06.54,Default,,0,0,0,,MUMBAI
+Dialogue: 0,0:00:07.42,0:00:08.38,Default,,0,0,0,,DESPITE NEW ZEALAND'S
+Dialogue: 0,0:00:08.38,0:00:09.70,Default,,0,0,0,,UNBEATEN T20 WORLD
+Dialogue: 0,0:00:09.70,0:00:10.52,Default,,0,0,0,,CUP RECORD AGAINST
+Dialogue: 0,0:00:10.52,0:00:11.64,Default,,0,0,0,,INDIA THE ODDS
+Dialogue: 0,0:00:11.64,0:00:12.50,Default,,0,0,0,,ARE SLIGHTLY IN
+Dialogue: 0,0:00:12.50,0:00:13.40,Default,,0,0,0,,INDIA'S FAVOUR THIS
+Dialogue: 0,0:00:13.40,0:00:13.64,Default,,0,0,0,,TIME
+Dialogue: 0,0:00:14.10,0:00:14.90,Default,,0,0,0,,THEY'VE BEEN SHAKY
+Dialogue: 0,0:00:14.90,0:00:15.84,Default,,0,0,0,,BUT DELIVERED IN
+Dialogue: 0,0:00:15.84,0:00:16.58,Default,,0,0,0,,CRUCIAL MOMENTS
+Dialogue: 0,0:00:17.52,0:00:18.28,Default,,0,0,0,,INDIA'S BATTING DEPTH
+Dialogue: 0,0:00:18.28,0:00:19.10,Default,,0,0,0,,WILL FACE OFF
+Dialogue: 0,0:00:19.10,0:00:20.10,Default,,0,0,0,,AGAINST NEW ZEALAND'S
+Dialogue: 0,0:00:20.10,0:00:20.80,Default,,0,0,0,,BALANCED ATTACK
+Dialogue: 0,0:00:21.22,0:00:21.88,Default,,0,0,0,,MAKING THIS A
+Dialogue: 0,0:00:21.88,0:00:22.96,Default,,0,0,0,,NAIL BITING ENCOUNTER
+Dialogue: 0,0:00:23.60,0:00:24.52,Default,,0,0,0,,WITH A 65
+Dialogue: 0,0:00:24.88,0:00:25.86,Default,,0,0,0,,CHANCE OF VICTORY
+Dialogue: 0,0:00:25.86,0:00:27.30,Default,,0,0,0,,INDIA LOOKS POISED
+Dialogue: 0,0:00:27.30,0:00:28.12,Default,,0,0,0,,TO BREAK THEIR
+Dialogue: 0,0:00:28.12,0:00:29.32,Default,,0,0,0,,T20 WORLD CUP
+Dialogue: 0,0:00:29.32,0:00:30.20,Default,,0,0,0,,CURSE AGAINST THE
+Dialogue: 0,0:00:30.20,0:00:30.74,Default,,0,0,0,,KIWIS
+Dialogue: 0,0:00:31.42,0:00:32.46,Default,,0,0,0,,WILL INDIA FINALLY
+Dialogue: 0,0:00:32.46,0:00:33.32,Default,,0,0,0,,CONQUER NEW ZEALAND
+Dialogue: 0,0:00:33.32,0:00:34.26,Default,,0,0,0,,ON THE GRANDEST
+Dialogue: 0,0:00:34.26,0:00:34.68,Default,,0,0,0,,STAGE

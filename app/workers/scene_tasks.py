@@ -88,6 +88,7 @@ def split_scenes_task(
     )
 
     with get_sync_db() as db:
+        project = None
         try:
             project = db.get(VideoProject, project_id)
             if project is None:
@@ -106,6 +107,12 @@ def split_scenes_task(
                 telegram_message_id=project.telegram_message_id,
             )
 
+            # Extract visual direction hints from script scenes
+            visual_hints = [
+                s.get("visual_hint", s.get("narration", ""))
+                for s in script_data.get("scenes", [])
+            ]
+
             # Call LLM for scene splitting (with audio_duration for exact sync)
             scenes: list[Scene] = _run_async(
                 split_script_to_scenes(
@@ -114,6 +121,7 @@ def split_scenes_task(
                     provider=project.provider,
                     visual_strategy=project.visual_strategy,
                     audio_duration=audio_duration,
+                    visual_hints=visual_hints or None,
                 )
             )
 
@@ -245,6 +253,7 @@ def generate_visuals_task(
         raise ValueError(f"No scene_plan found for project {project_id}")
 
     with get_sync_db() as db:
+        project = None
         try:
             project = db.get(VideoProject, project_id)
             if project is None:

@@ -51,6 +51,9 @@ num2words==0.5.14
 # ── Telegram Bot ─────────────────────────────────────────────
 python-telegram-bot==20.7
 
+# ── Google Trends ────────────────────────────────────────────
+pytrends==4.9.2
+
 # ── Monitoring & Observability ───────────────────────────────
 prometheus-client==0.20.0
 prometheus-fastapi-instrumentator==7.0.0

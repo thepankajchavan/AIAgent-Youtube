@@ -93,6 +93,7 @@ def assemble_video_task(
 
     # SINGLE session for entire task
     with get_sync_db() as db:
+        project = None
         try:
             # 1. Load project
             project = db.get(VideoProject, project_id)
@@ -147,11 +148,37 @@ def assemble_video_task(
                     )
 
             # 5. Generate captions (optional — graceful degradation)
-            caption_ass_path = None
-            if get_settings().captions_enabled and audio_path_str:
+            settings = get_settings()
+
+            # Mood-as-creative-glue: let mood drive caption/transition style
+            script_data = merged.get("script_data") or {}
+            mood_glue_caption = None
+            mood_glue_transition = None
+            if getattr(settings, "mood_creative_glue_enabled", False):
                 try:
+                    from app.services.scene_director_service import (
+                        mood_to_caption_style,
+                        mood_to_transition_style,
+                    )
+                    _mood = script_data.get("mood", settings.bgm_default_mood)
+                    mood_glue_caption = mood_to_caption_style(_mood)
+                    mood_glue_transition = mood_to_transition_style(_mood)
+                    logger.info(
+                        "Mood glue active — mood={} caption={} transition={}",
+                        _mood, mood_glue_caption, mood_glue_transition,
+                    )
+                except Exception as glue_exc:
+                    logger.warning("Mood glue failed: {}", glue_exc)
+
+            caption_ass_path = None
+            if settings.captions_enabled and audio_path_str:
+                try:
+                    caption_style = mood_glue_caption or getattr(settings, "captions_style", "classic")
                     caption_ass_path = asyncio.run(
-                        generate_captions(audio_path=Path(audio_path_str))
+                        generate_captions(
+                            audio_path=Path(audio_path_str),
+                            style=caption_style,
+                        )
                     )
                 except Exception as caption_exc:
                     logger.warning(
@@ -169,13 +196,92 @@ def assemble_video_task(
                         extra={"captions": "failed"},
                     )
 
+            # 5b. Compute transitions from config (with mood glue override)
+            transitions = None
+            transition_durations = None
+            if getattr(settings, "transitions_enabled", True):
+                from app.services.transition_service import compute_transitions_for_clips
+                _style_override = mood_glue_transition  # None if mood glue disabled
+                transitions, transition_durations = compute_transitions_for_clips(
+                    len(clip_paths_str),
+                    style_override=_style_override,
+                )
+
+            # 5c. Fetch background music (optional — graceful degradation)
+            bgm_path = None
+            if getattr(settings, "bgm_enabled", False):
+                try:
+                    from app.services.music_service import fetch_bgm_for_mood
+                    mood = script_data.get("mood", settings.bgm_default_mood)
+                    bgm_path = asyncio.run(
+                        fetch_bgm_for_mood(mood, audio_duration or 30.0)
+                    )
+                    if bgm_path:
+                        logger.info("BGM fetched for mood='{}' → {}", mood, bgm_path)
+                except Exception as bgm_exc:
+                    logger.warning(
+                        "BGM fetch failed — proceeding without music: {}",
+                        bgm_exc,
+                    )
+                    bgm_path = None
+
+            # 5d. Apply pacing (speed effects) per scene
+            if getattr(settings, "pacing_enabled", False):
+                try:
+                    from app.services.pacing_service import compute_scene_pacing, apply_speed_effect
+                    _pace_mood = script_data.get("mood", "uplifting")
+                    _pace_style = getattr(settings, "pacing_style", "auto")
+                    speeds = compute_scene_pacing(
+                        num_scenes=len(clip_paths_str),
+                        mood=_pace_mood,
+                        pacing_style=_pace_style,
+                    )
+                    _paced_clips = []
+                    for idx, (clip_str, speed) in enumerate(zip(clip_paths_str, speeds)):
+                        if abs(speed - 1.0) > 0.01:
+                            clip_p = Path(clip_str)
+                            paced_p = clip_p.with_name(f"{clip_p.stem}_paced{clip_p.suffix}")
+                            apply_speed_effect(clip_p, paced_p, speed)
+                            _paced_clips.append(str(paced_p))
+                        else:
+                            _paced_clips.append(clip_str)
+                    clip_paths_str = _paced_clips
+                    logger.info("Pacing applied — speeds={}", speeds)
+                except Exception as pace_exc:
+                    logger.warning("Pacing failed — proceeding without: {}", pace_exc)
+
             # 6. Assemble video
+            #    Extract per-scene durations so clips are trimmed/looped to match audio
+            scene_plan = merged.get("scene_plan") or []
+            scene_durations: list[float] | None = None
+            if scene_plan:
+                scene_durations = [
+                    s["duration_seconds"] for s in scene_plan if "duration_seconds" in s
+                ]
+                if len(scene_durations) != len(clip_paths_str):
+                    logger.warning(
+                        "scene_durations count ({}) != clip count ({}) — skipping duration matching",
+                        len(scene_durations), len(clip_paths_str),
+                    )
+                    scene_durations = None
+
+            _assembly_mood = script_data.get("mood") if script_data else None
             output_path = assemble_video(
                 clip_paths=[Path(p) for p in clip_paths_str],
                 audio_path=Path(audio_path_str),
                 video_format=video_format,
                 project_id=project_id,
                 caption_ass_path=caption_ass_path,
+                scene_durations=scene_durations,
+                transitions=transitions,
+                transition_durations=transition_durations,
+                bgm_path=bgm_path,
+                bgm_volume_db=getattr(settings, "bgm_volume_db", -18.0),
+                tts_volume_db=getattr(settings, "tts_volume_db", -3.0),
+                bgm_fade_in=getattr(settings, "bgm_fade_in_duration", 1.0),
+                bgm_fade_out=getattr(settings, "bgm_fade_out_duration", 2.0),
+                bgm_ducking_enabled=getattr(settings, "bgm_ducking_enabled", True),
+                mood=_assembly_mood,
             )
 
             # 7. Post-assembly: validate final video
@@ -191,37 +297,72 @@ def assemble_video_task(
                 )
 
             if audio_duration and audio_duration > 0:
-                post_mismatch = abs(final_duration - audio_duration) / audio_duration
+                expected_duration = audio_duration
+
+                post_mismatch = abs(final_duration - expected_duration) / expected_duration
                 if post_mismatch > 0.10:
                     logger.warning(
-                        "Post-assembly drift {:.0%}: final={:.1f}s vs audio={:.1f}s — project={}",
+                        "Post-assembly drift {:.0%}: final={:.1f}s vs expected={:.1f}s "
+                        "(audio={:.1f}s) — project={}",
                         post_mismatch,
                         final_duration,
+                        expected_duration,
                         audio_duration,
                         project_id,
                     )
                 else:
                     logger.info(
-                        "Post-assembly OK — final={:.1f}s audio={:.1f}s",
+                        "Post-assembly OK — final={:.1f}s expected={:.1f}s (audio={:.1f}s)",
                         final_duration,
+                        expected_duration,
                         audio_duration,
                     )
 
-            # 7. Generate thumbnail from middle of video
-            try:
-                thumbnail_path = generate_thumbnail(
-                    video_path=output_path, timestamp=-1  # Extract from middle
-                )
-                project.thumbnail_path = str(thumbnail_path)
-                logger.info(
-                    "Thumbnail generated — project={} thumbnail={}", project_id, thumbnail_path
-                )
-            except Exception as thumb_exc:
-                # Don't fail the entire pipeline if thumbnail generation fails
-                logger.warning(
-                    "Thumbnail generation failed for project={}: {}", project_id, thumb_exc
-                )
-                project.thumbnail_path = None
+            # 7. Generate thumbnail
+            thumbnail_path = None
+            _use_ai_thumb = getattr(settings, "ai_thumbnail_enabled", False)
+            if _use_ai_thumb:
+                try:
+                    from app.services.thumbnail_service import generate_ai_thumbnail
+                    _title = script_data.get("title", "")
+                    _topic = script_data.get("topic", _title)
+                    _thumb_mood = script_data.get("mood", "uplifting")
+                    thumbnail_path = asyncio.run(
+                        generate_ai_thumbnail(
+                            title=_title,
+                            topic=_topic,
+                            mood=_thumb_mood,
+                            project_id=project_id,
+                        )
+                    )
+                    project.thumbnail_path = str(thumbnail_path)
+                    logger.info(
+                        "AI thumbnail generated — project={} thumbnail={}",
+                        project_id, thumbnail_path,
+                    )
+                except Exception as ai_thumb_exc:
+                    logger.warning(
+                        "AI thumbnail failed, falling back to frame extraction: {}",
+                        ai_thumb_exc,
+                    )
+                    _use_ai_thumb = False  # Fall through to frame extraction
+
+            if not _use_ai_thumb:
+                try:
+                    thumbnail_path = generate_thumbnail(
+                        video_path=output_path, timestamp=-1
+                    )
+                    project.thumbnail_path = str(thumbnail_path)
+                    logger.info(
+                        "Thumbnail generated — project={} thumbnail={}",
+                        project_id, thumbnail_path,
+                    )
+                except Exception as thumb_exc:
+                    logger.warning(
+                        "Thumbnail generation failed for project={}: {}",
+                        project_id, thumb_exc,
+                    )
+                    project.thumbnail_path = None
 
             # 8. Persist results
             project.output_path = str(output_path)

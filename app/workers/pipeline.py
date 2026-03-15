@@ -42,6 +42,8 @@ def build_pipeline(
     visual_strategy: str = "stock_only",
     ai_video_provider: str | None = None,
     target_duration: int | None = None,
+    language: str | None = None,
+    voice_id: str | None = None,
 ) -> chain:
     """
     Build the full Celery pipeline for a video project.
@@ -76,6 +78,8 @@ def build_pipeline(
         video_format=video_format,
         provider=provider,
         target_duration=target_duration,
+        language=language,
+        voice_id=voice_id,
     )
 
     if visual_strategy == "stock_only":
@@ -124,6 +128,8 @@ def run_pipeline_task(
     visual_strategy: str = "stock_only",
     ai_video_provider: str | None = None,
     target_duration: int | None = None,
+    language: str | None = None,
+    voice_id: str | None = None,
 ) -> str:
     """
     Entry-point task that builds and dispatches the full pipeline.
@@ -140,6 +146,8 @@ def run_pipeline_task(
         visual_strategy=visual_strategy,
         ai_video_provider=ai_video_provider,
         target_duration=target_duration,
+        language=language,
+        voice_id=voice_id,
     )
 
     result = pipeline.apply_async()

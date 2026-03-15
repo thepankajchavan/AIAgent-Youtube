@@ -12,6 +12,7 @@ from celery import Task
 from loguru import logger
 
 from app.core.celery_app import celery_app
+from app.core.config import get_settings
 from app.core.dlq import DeadLetterQueue
 from app.models.video import VideoProject, VideoStatus
 from app.services.llm_service import LLMProvider, generate_script
@@ -52,6 +53,8 @@ def generate_script_task(
     video_format: str = "short",
     provider: str = "openai",
     target_duration: int | None = None,
+    language: str | None = None,
+    voice_id: str | None = None,
 ) -> dict:
     """
     Generate a video script for a project.
@@ -81,6 +84,7 @@ def generate_script_task(
 
     # SINGLE session for entire task
     with get_sync_db() as db:
+        project = None
         try:
             # 1. Load project
             project = db.get(VideoProject, project_id)
@@ -111,17 +115,160 @@ def generate_script_task(
                     len(search_context),
                 )
 
-            # 4. Generate script with search context
-            llm_provider = LLMProvider(provider)
-            script_data = _run_async(
-                generate_script(
+            # 3b. Fetch viral optimization context (graceful — returns empty on failure)
+            trending_prompt = None
+            trending_data = {}
+            try:
+                from app.services.viral_service import ViralOptimizer
+
+                optimizer = ViralOptimizer()
+                trending_data = _run_async(optimizer.get_trending_context(
                     topic=topic,
-                    video_format=video_format,
-                    provider=llm_provider,
-                    search_context=search_context,
-                    target_duration=target_duration,
+                    niche=getattr(project, "trend_topic_used", None),
+                ))
+                trending_prompt = optimizer.build_viral_prompt_context(trending_data)
+                logger.info(
+                    "Viral context fetched — project={} hashtags={} keywords={}",
+                    project_id,
+                    len(trending_data.get("trending_hashtags", [])),
+                    len(trending_data.get("trending_keywords", [])),
                 )
-            )
+            except Exception as viral_exc:
+                logger.warning(
+                    "Viral optimization failed, continuing without: {}", viral_exc
+                )
+
+            # 4. Generate script (with self-improvement enrichment if enabled)
+            llm_provider = LLMProvider(provider)
+            task_settings = get_settings()
+            prompt_metadata = None
+
+            if task_settings.self_improvement_enabled:
+                try:
+                    from app.services.prompt_builder_service import DynamicPromptBuilder
+
+                    prompt_builder = DynamicPromptBuilder()
+                    enriched_prompt, prompt_metadata = _run_async(
+                        prompt_builder.build_enriched_prompt(
+                            base_topic=topic,
+                            user_instructions=search_context,
+                            niche=getattr(project, "category", None),
+                        )
+                    )
+
+                    script_data = _run_async(
+                        generate_script(
+                            topic=enriched_prompt,
+                            video_format=video_format,
+                            provider=llm_provider,
+                            search_context=None,
+                            target_duration=target_duration,
+                        )
+                    )
+
+                    # Store self-improvement metadata
+                    if prompt_metadata:
+                        project.prompt_version_id = prompt_metadata.get("prompt_version_id")
+                        project.trend_topic_used = prompt_metadata.get("trend_topic_used")
+
+                        # Record usage
+                        if prompt_metadata.get("prompt_version_id"):
+                            _run_async(
+                                prompt_builder.record_prompt_usage(
+                                    prompt_metadata["prompt_version_id"],
+                                    project_id,
+                                )
+                            )
+
+                    logger.info(
+                        "Script generated with self-improvement — trend={} patterns={}",
+                        prompt_metadata.get("trend_topic_used"),
+                        len(prompt_metadata.get("patterns_applied", [])),
+                    )
+
+                except Exception as si_exc:
+                    logger.warning(
+                        "Self-improvement enrichment failed, falling back to standard: {}",
+                        si_exc,
+                    )
+                    script_data = _run_async(
+                        generate_script(
+                            topic=topic,
+                            video_format=video_format,
+                            provider=llm_provider,
+                            search_context=search_context,
+                            target_duration=target_duration,
+                            trending_context=trending_prompt,
+                        )
+                    )
+            else:
+                script_data = _run_async(
+                    generate_script(
+                        topic=topic,
+                        video_format=video_format,
+                        provider=llm_provider,
+                        search_context=search_context,
+                        target_duration=target_duration,
+                        trending_context=trending_prompt,
+                    )
+                )
+
+            # 4b. Post-process: ensure trending hashtags are included
+            if trending_data.get("trending_hashtags"):
+                try:
+                    from app.services.viral_service import ViralOptimizer as _VO
+                    script_data = _VO().ensure_trending_hashtags(
+                        script_data, trending_data["trending_hashtags"]
+                    )
+                except Exception:
+                    pass  # Non-critical
+
+            # 4c. Translate script if multi-language enabled
+            task_language = language or getattr(task_settings, "default_language", "en")
+
+            if (
+                getattr(task_settings, "multi_language_enabled", False)
+                and task_language
+                and task_language != "en"
+            ):
+                try:
+                    from app.services.translation_service import (
+                        translate_script,
+                        translate_metadata,
+                    )
+
+                    translated_script = _run_async(
+                        translate_script(
+                            script_data["script"],
+                            task_language,
+                            provider=getattr(task_settings, "translation_provider", "openai"),
+                        )
+                    )
+                    script_data["script"] = translated_script
+
+                    translated_meta = _run_async(
+                        translate_metadata(
+                            script_data.get("title", ""),
+                            script_data.get("description", ""),
+                            script_data.get("tags", []),
+                            task_language,
+                            provider=getattr(task_settings, "translation_provider", "openai"),
+                        )
+                    )
+                    script_data["title"] = translated_meta["title"]
+                    script_data["description"] = translated_meta["description"]
+                    script_data["tags"] = translated_meta["tags"]
+
+                    project.language = task_language
+                    logger.info(
+                        "Script translated to {} — project={}",
+                        task_language,
+                        project_id,
+                    )
+                except Exception as trans_exc:
+                    logger.warning(
+                        "Translation failed, keeping English: {}", trans_exc
+                    )
 
             # 5. Persist result
             project.script = script_data["script"]
@@ -143,6 +290,8 @@ def generate_script_task(
                 "provider": provider,
                 "visual_strategy": project.visual_strategy,
                 "target_duration": target_duration,
+                "language": language,
+                "voice_id": voice_id,
             }
 
         except Exception as exc:

@@ -146,8 +146,11 @@ async def retry_project(
             project_id=str(project.id),
             topic=project.topic,
             video_format=project.format.value,
-            provider=project.provider,  # USE STORED PROVIDER
-            skip_upload=False,  # Default for retry
+            provider=project.provider,
+            skip_upload=False,
+            visual_strategy=project.visual_strategy,
+            ai_video_provider=project.ai_video_provider,
+            target_duration=project.target_duration,
         )
 
         project.celery_task_id = celery_result.id

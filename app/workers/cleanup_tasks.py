@@ -18,7 +18,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.database import get_async_session
 from app.core.metrics import media_disk_usage_bytes, media_files_total
-from app.models.video_project import ProjectStatus, VideoProject
+from app.models.video import VideoStatus as ProjectStatus, VideoProject
 
 
 @shared_task(name="cleanup_tasks.cleanup_completed_projects")

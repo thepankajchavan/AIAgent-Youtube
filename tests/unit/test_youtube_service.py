@@ -381,7 +381,11 @@ class TestVideoUpload:
         call_kwargs = mock_youtube.videos().insert.call_args.kwargs
         desc = call_kwargs["body"]["snippet"]["description"]
         assert desc.startswith("Original description.")
-        assert "#Shorts #Science #Facts" in desc
+        # Hashtags are reordered: #Shorts moves to end (YouTube shows last 3 above title)
+        assert "#Science" in desc
+        assert "#Facts" in desc
+        assert "#Shorts" in desc
+        assert desc.rstrip().endswith("#Shorts")
 
     def test_upload_video_no_hashtags(self, mocker, tmp_path):
         """Test that description is unchanged when no hashtags provided."""

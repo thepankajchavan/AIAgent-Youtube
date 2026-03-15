@@ -39,6 +39,7 @@ class VisualStrategyEnum(StrEnum):
     STOCK_ONLY = "stock_only"
     AI_ONLY = "ai_only"
     HYBRID = "hybrid"
+    AI_IMAGES = "ai_images"
 
 
 # ── Pipeline ─────────────────────────────────────────────────
@@ -68,7 +69,7 @@ class PipelineRequest(BaseModel):
     )
     visual_strategy: VisualStrategyEnum = Field(
         default=VisualStrategyEnum.STOCK_ONLY,
-        description="Visual strategy: stock_only, ai_only, or hybrid.",
+        description="Visual strategy: stock_only, ai_only, hybrid, or ai_images.",
     )
     ai_video_provider: str | None = Field(
         default=None,
@@ -79,6 +80,34 @@ class PipelineRequest(BaseModel):
         ge=15,
         le=120,
         description="Target video duration in seconds (15-120). Adjusts script word count.",
+    )
+    caption_style: str | None = Field(
+        default=None,
+        description="Caption animation style: classic, karaoke, bounce, typewriter.",
+    )
+    creative_preset: str | None = Field(
+        default=None,
+        description="Creative preset: auto, minimal, cinematic, energetic.",
+    )
+    bgm_enabled: bool | None = Field(
+        default=None,
+        description="Enable background music for this video.",
+    )
+    thumbnail_style: str | None = Field(
+        default=None,
+        description="Thumbnail style: auto, ai, frame.",
+    )
+    voice_id: str | None = Field(
+        default=None,
+        description="ElevenLabs voice_id override.",
+    )
+    language: str | None = Field(
+        default=None,
+        description="Language code for video generation (en, es, fr, etc.).",
+    )
+    pacing_style: str | None = Field(
+        default=None,
+        description="Video pacing style: auto, uniform, dramatic, energetic.",
     )
 
 

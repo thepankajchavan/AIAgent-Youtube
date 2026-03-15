@@ -1,6 +1,7 @@
 import asyncio
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import task_failure
 from kombu import Exchange, Queue
 
@@ -18,7 +19,7 @@ celery_app = Celery(
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.task_serializer = "json"
 celery_app.conf.result_serializer = "json"
-celery_app.conf.timezone = "UTC"
+celery_app.conf.timezone = "Asia/Kolkata"
 celery_app.conf.enable_utc = True
 
 # ── Result settings ──────────────────────────────────────────
@@ -71,7 +72,41 @@ celery_app.conf.beat_schedule = {
         "schedule": 60 * 5,  # Every 5 minutes
         "options": {"queue": "default"},
     },
+    # ── Self-Improvement Feedback Loop ────────────────────────
+    "collect-youtube-analytics": {
+        "task": "app.workers.analytics_tasks.collect_analytics_task",
+        "schedule": crontab(hour=settings.youtube_analytics_collection_hour, minute=0),
+        "options": {"queue": "default"},
+    },
+    "analyze-patterns-weekly": {
+        "task": "app.workers.pattern_tasks.analyze_patterns_task",
+        "schedule": crontab(day_of_week=0, hour=4, minute=0),
+        "options": {"queue": "default"},
+    },
+    # ── Smart Auto-Scheduling ────────────────────────────────
+    "cleanup-expired-trends": {
+        "task": "app.workers.trend_tasks.cleanup_expired_trends_task",
+        "schedule": crontab(hour=3, minute=30),  # Daily at 3:30 AM
+        "options": {"queue": "default"},
+    },
+    "check-trend-health": {
+        "task": "app.workers.trend_tasks.check_trend_health_task",
+        "schedule": 60 * 30,  # Every 30 minutes
+        "options": {"queue": "default"},
+    },
 }
+
+# ── Fixed-Time Auto-Schedule (from AUTO_SCHEDULE_TIMES) ────
+_schedule_times = getattr(settings, "auto_schedule_times", "10:00,18:00")
+for _i, _time_str in enumerate(_schedule_times.split(","), start=1):
+    _time_str = _time_str.strip()
+    if ":" in _time_str:
+        _h, _m = _time_str.split(":", 1)
+        celery_app.conf.beat_schedule[f"auto-schedule-run-{_i}"] = {
+            "task": "app.workers.auto_schedule_tasks.scheduled_video_task",
+            "schedule": crontab(hour=int(_h), minute=int(_m)),
+            "options": {"queue": "default"},
+        }
 
 # ── Queues ───────────────────────────────────────────────────
 default_exchange = Exchange("default", type="direct")

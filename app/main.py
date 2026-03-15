@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # STARTUP PHASE
     # Media directories are validated above, but ensure they exist
-    for d in (settings.audio_dir, settings.video_dir, settings.output_dir, settings.ai_video_dir):
+    for d in (settings.audio_dir, settings.video_dir, settings.output_dir, settings.ai_video_dir, settings.ai_images_dir):
         d.mkdir(parents=True, exist_ok=True)
 
     logger.info("🚀 {} starting (env={})", settings.app_name, settings.app_env)
@@ -114,14 +114,26 @@ def create_app() -> FastAPI:
 
     # ── Route registration ────────────────────────────────────
     from app.api.routes.admin import router as admin_router
+    from app.api.routes.analytics import (
+        patterns_router,
+        prompts_router,
+        router as analytics_router,
+        trends_router,
+    )
     from app.api.routes.pipeline import router as pipeline_router
     from app.api.routes.projects import router as projects_router
+    from app.api.routes.schedule import router as schedule_router
     from app.api.routes.system import router as system_router
 
     app.include_router(pipeline_router)
     app.include_router(projects_router)
     app.include_router(system_router)
     app.include_router(admin_router)
+    app.include_router(analytics_router)
+    app.include_router(trends_router)
+    app.include_router(patterns_router)
+    app.include_router(prompts_router)
+    app.include_router(schedule_router)
 
     return app
 

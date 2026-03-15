@@ -64,6 +64,8 @@ REM Kill any cmd windows with our specific titles
 taskkill /FI "WINDOWTITLE eq FastAPI Server*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Celery - Default Queue*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Celery - Workers*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Celery - Beat Scheduler*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Telegram Bot*" /F >nul 2>&1
 
 echo [OK] Terminal windows closed
 echo.

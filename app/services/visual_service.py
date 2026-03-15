@@ -255,27 +255,122 @@ async def download_video(
     return output_path
 
 
+# ── Stock Query Expansion ────────────────────────────────────────
+
+_STOCK_SYNONYMS: dict[str, str] = {
+    "ocean": "sea",
+    "city": "urban skyline",
+    "space": "cosmos galaxy",
+    "mountain": "peak summit",
+    "forest": "woods trees",
+    "fire": "flames burning",
+    "night": "dark nighttime",
+    "sky": "clouds atmosphere",
+    "earth": "planet globe",
+    "light": "glow illumination",
+    "person": "people human",
+    "ancient": "historical vintage",
+    "technology": "digital tech",
+    "underwater": "deep sea marine",
+    "building": "architecture structure",
+}
+
+_STOP_WORDS = frozenset({
+    "the", "a", "an", "is", "are", "was", "were", "it", "its",
+    "this", "that", "you", "your", "they", "them", "we", "our",
+    "and", "or", "but", "not", "no", "so", "to", "of", "in",
+    "on", "at", "by", "for", "with", "from", "has", "have",
+    "had", "do", "does", "did", "be", "been", "being",
+})
+
+
+def _expand_stock_query(query: str, narration: str = "") -> list[str]:
+    """Expand a stock footage query into up to 3 alternative searches.
+
+    Strategy:
+    1. Original query (e.g. "molten lava ocean")
+    2. Synonym variant (e.g. "molten lava sea")
+    3. Broader context from narration keywords
+    """
+    queries = [query]
+
+    # Generate synonym variant
+    query_words = query.lower().split()
+    synonym_words = list(query_words)
+    replaced = False
+    for i, word in enumerate(query_words):
+        if word in _STOCK_SYNONYMS and not replaced:
+            synonym_words[i] = _STOCK_SYNONYMS[word]
+            replaced = True
+    if replaced:
+        synonym_query = " ".join(synonym_words)
+        if synonym_query != query.lower():
+            queries.append(synonym_query)
+
+    # Extract broader context from narration
+    if narration and len(narration.split()) > 3:
+        narration_words = [
+            w.strip(".,!?;:'\"")
+            for w in narration.lower().split()
+            if w.strip(".,!?;:'\"") not in _STOP_WORDS and len(w) > 2
+        ]
+        if len(narration_words) >= 3:
+            context_query = " ".join(narration_words[:4])
+            if context_query.lower() != query.lower():
+                queries.append(context_query)
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for q in queries:
+        q_lower = q.lower().strip()
+        if q_lower not in seen:
+            seen.add(q_lower)
+            unique.append(q)
+
+    return unique[:3]
+
+
 async def fetch_clips(
     queries: list[str],
     orientation: str = "portrait",
     clips_per_query: int = 2,
+    narrations: list[str] | None = None,
+    expand_queries: bool = True,
 ) -> list[Path]:
     """
     High-level helper: search multiple queries, download top clips, return paths.
 
     This is the main entry point called by Celery workers.
+    When expand_queries is True, each query is expanded into 2-3 variants
+    for better coverage, using the first successful result per original query.
     """
     downloaded: list[Path] = []
 
-    for query in queries:
-        results = await search_videos(
-            query=query,
-            orientation=orientation,
-            per_page=clips_per_query,
-        )
-        for clip in results[:clips_per_query]:
-            path = await download_video(clip["download_url"])
-            downloaded.append(path)
+    for i, query in enumerate(queries):
+        narration = narrations[i] if narrations and i < len(narrations) else ""
+
+        if expand_queries and getattr(settings, "stock_query_expansion_enabled", True):
+            expanded = _expand_stock_query(query, narration)
+        else:
+            expanded = [query]
+
+        found_for_query = False
+        for eq in expanded:
+            results = await search_videos(
+                query=eq,
+                orientation=orientation,
+                per_page=clips_per_query,
+            )
+            if results:
+                for clip in results[:clips_per_query]:
+                    path = await download_video(clip["download_url"])
+                    downloaded.append(path)
+                found_for_query = True
+                break  # Got clips for this query, move to next
+
+        if not found_for_query:
+            logger.warning("No stock clips found for any expansion of '{}'", query)
 
     logger.info("Total clips downloaded: {}", len(downloaded))
     return downloaded

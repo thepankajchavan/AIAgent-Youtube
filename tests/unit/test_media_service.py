@@ -8,13 +8,18 @@ import pytest
 
 from app.services.media_service import (
     _concat_with_audio,
+    apply_ken_burns,
     assemble_video,
     burn_captions,
     concatenate_clips,
+    concatenate_clips_with_crossfade,
+    image_to_video_clip,
     normalize_audio,
     overlay_audio,
     probe_duration,
     scale_and_pad,
+    select_ken_burns_effect,
+    trim_or_loop_clip,
 )
 
 
@@ -253,12 +258,11 @@ class TestAssembleVideo:
     """Test full video assembly pipeline."""
 
     def test_assemble_video_success(self, mocker, tmp_path):
-        """Test complete video assembly pipeline (no outro)."""
+        """Test complete video assembly pipeline."""
         # Setup paths
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
-        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         # Create fake input clips
@@ -278,7 +282,7 @@ class TestAssembleVideo:
 
         # Mock all FFmpeg operations
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
-        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.concatenate_clips_with_crossfade", side_effect=lambda c, o, **kw: o)
         mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
 
         # Mock validate_file_path to return the path unchanged
@@ -321,7 +325,6 @@ class TestAssembleVideo:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
-        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -344,7 +347,7 @@ class TestAssembleVideo:
             return o
 
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=mock_scale_and_pad)
-        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o, **kw: o)
         mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
@@ -358,7 +361,6 @@ class TestAssembleVideo:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
-        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -380,7 +382,7 @@ class TestAssembleVideo:
             return o
 
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=mock_scale_and_pad)
-        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o, **kw: o)
         mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
@@ -422,7 +424,6 @@ class TestAssembleVideo:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
-        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -446,7 +447,7 @@ class TestAssembleVideo:
             return o
 
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=mock_scale_and_pad)
-        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o, **kw: o)
         mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
 
@@ -621,7 +622,6 @@ class TestAssembleVideoWithCaptions:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
-        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -642,7 +642,7 @@ class TestAssembleVideoWithCaptions:
             return o
 
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
-        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o, **kw: o)
         mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mock_burn_fn = mocker.patch(
             "app.services.media_service.burn_captions", side_effect=mock_burn
@@ -666,7 +666,6 @@ class TestAssembleVideoWithCaptions:
         mock_settings = MagicMock()
         mock_settings.media_path = tmp_path
         mock_settings.output_dir = tmp_path / "output"
-        mock_settings.outro_video_path = str(tmp_path / "nonexistent_outro.mp4")
         mocker.patch("app.services.media_service.settings", mock_settings)
 
         clip = tmp_path / "clip.mp4"
@@ -680,7 +679,7 @@ class TestAssembleVideoWithCaptions:
             return o
 
         mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
-        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o, **kw: o)
         mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
         mock_burn_fn = mocker.patch("app.services.media_service.burn_captions")
         mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
@@ -695,3 +694,392 @@ class TestAssembleVideoWithCaptions:
         # burn_captions should NOT have been called
         mock_burn_fn.assert_not_called()
         assert result.name == "final_test_nocp.mp4"
+
+
+class TestTrimOrLoopClip:
+    """Test clip duration matching via trim/loop."""
+
+    def test_trim_clip_when_longer_than_target(self, mocker, tmp_path):
+        """Clip 8s, target 5s → should trim with -t 5.0."""
+        input_path = tmp_path / "clip.mp4"
+        output_path = tmp_path / "trimmed.mp4"
+        input_path.write_bytes(b"video")
+
+        mocker.patch("app.services.media_service.probe_duration", return_value=8.0)
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        trim_or_loop_clip(input_path, output_path, 5.0)
+
+        args = mock_run.call_args[0][0]
+        assert "-t" in args
+        t_idx = args.index("-t")
+        assert args[t_idx + 1] == "5.0"
+        # Trim uses stream copy (no re-encode)
+        assert "-c:v" in args
+        cv_idx = args.index("-c:v")
+        assert args[cv_idx + 1] == "copy"
+
+    def test_loop_clip_when_shorter_than_target(self, mocker, tmp_path):
+        """Clip 3s, target 7s → should loop with -stream_loop."""
+        input_path = tmp_path / "clip.mp4"
+        output_path = tmp_path / "looped.mp4"
+        input_path.write_bytes(b"video")
+
+        mocker.patch("app.services.media_service.probe_duration", return_value=3.0)
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        trim_or_loop_clip(input_path, output_path, 7.0)
+
+        args = mock_run.call_args[0][0]
+        assert "-stream_loop" in args
+        assert "-1" in args
+        assert "-t" in args
+        t_idx = args.index("-t")
+        assert args[t_idx + 1] == "7.0"
+
+    def test_clip_near_target_copies_as_is(self, mocker, tmp_path):
+        """Clip 5.2s, target 5.0s → within 0.5s, should copy without re-encode."""
+        input_path = tmp_path / "clip.mp4"
+        output_path = tmp_path / "output.mp4"
+        input_path.write_bytes(b"video")
+
+        mocker.patch("app.services.media_service.probe_duration", return_value=5.2)
+        mock_run = mocker.patch("subprocess.run")
+
+        trim_or_loop_clip(input_path, output_path, 5.0)
+
+        # Should NOT call FFmpeg — just copies
+        mock_run.assert_not_called()
+        assert output_path.exists()
+
+    def test_zero_target_raises_error(self, tmp_path):
+        """Target duration 0 should raise ValueError."""
+        input_path = tmp_path / "clip.mp4"
+        output_path = tmp_path / "output.mp4"
+        input_path.write_bytes(b"video")
+
+        with pytest.raises(ValueError, match="positive"):
+            trim_or_loop_clip(input_path, output_path, 0)
+
+    def test_negative_target_raises_error(self, tmp_path):
+        """Negative target duration should raise ValueError."""
+        input_path = tmp_path / "clip.mp4"
+        output_path = tmp_path / "output.mp4"
+        input_path.write_bytes(b"video")
+
+        with pytest.raises(ValueError, match="positive"):
+            trim_or_loop_clip(input_path, output_path, -5.0)
+
+
+class TestSelectKenBurnsEffect:
+    """Test Ken Burns effect selection for scenes."""
+
+    def test_scene_1_uses_zoom_in(self):
+        assert select_ken_burns_effect(1, 5) == "zoom_in"
+
+    def test_scene_2_uses_diagonal_pan_rd(self):
+        assert select_ken_burns_effect(2, 5) == "diagonal_pan_rd"
+
+    def test_scene_3_uses_zoom_out_pan_left(self):
+        assert select_ken_burns_effect(3, 5) == "zoom_out_pan_left"
+
+    def test_scene_4_uses_pan_right(self):
+        assert select_ken_burns_effect(4, 6) == "pan_right"
+
+    def test_scene_5_uses_zoom_in_pan_right(self):
+        assert select_ken_burns_effect(5, 6) == "zoom_in_pan_right"
+
+    def test_scene_6_uses_diagonal_pan_lu(self):
+        assert select_ken_burns_effect(6, 6) == "diagonal_pan_lu"
+
+    def test_cycles_for_more_than_9_scenes(self):
+        """Scene 10 should cycle back to scene 1's effect."""
+        assert select_ken_burns_effect(10, 12) == select_ken_burns_effect(1, 5)
+
+    def test_no_consecutive_duplicates_for_6_scenes(self):
+        effects = [select_ken_burns_effect(i, 6) for i in range(1, 7)]
+        for i in range(len(effects) - 1):
+            assert effects[i] != effects[i + 1]
+
+
+class TestApplyKenBurns:
+    """Test Ken Burns FFmpeg effect generation."""
+
+    def test_zoom_in_effect_ffmpeg_args(self, mocker, tmp_path):
+        """Verify zoompan filter args for zoom_in effect."""
+        image_path = tmp_path / "scene.png"
+        output_path = tmp_path / "clip.mp4"
+        image_path.write_bytes(b"image")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        apply_ken_burns(image_path, output_path, duration=5.0, effect="zoom_in")
+
+        args = mock_run.call_args[0][0]
+        assert args[0] == "ffmpeg"
+        assert "-loop" in args
+        assert "1" in args
+        assert "-vf" in args
+
+        vf_idx = args.index("-vf")
+        vf_value = args[vf_idx + 1]
+        assert "zoompan" in vf_value
+        assert "1080x1920" in vf_value
+        assert "fade=t=in" in vf_value
+        assert "fade=t=out" in vf_value
+
+    def test_duration_matches_target(self, mocker, tmp_path):
+        """Verify -t flag matches requested duration."""
+        image_path = tmp_path / "scene.png"
+        output_path = tmp_path / "clip.mp4"
+        image_path.write_bytes(b"image")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        apply_ken_burns(image_path, output_path, duration=8.5, effect="pan_left")
+
+        args = mock_run.call_args[0][0]
+        t_idx = args.index("-t")
+        assert args[t_idx + 1] == "8.5"
+
+    def test_invalid_effect_raises(self, tmp_path):
+        """Unknown effect name should raise ValueError."""
+        with pytest.raises(ValueError, match="Unknown Ken Burns effect"):
+            apply_ken_burns(
+                tmp_path / "img.png", tmp_path / "out.mp4",
+                duration=5.0, effect="spin_around",
+            )
+
+    def test_zero_duration_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="positive"):
+            apply_ken_burns(
+                tmp_path / "img.png", tmp_path / "out.mp4",
+                duration=0, effect="zoom_in",
+            )
+
+    def test_ffmpeg_failure_raises(self, mocker, tmp_path):
+        """FFmpeg failure should raise RuntimeError."""
+        image_path = tmp_path / "scene.png"
+        output_path = tmp_path / "clip.mp4"
+        image_path.write_bytes(b"image")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Error"
+        mocker.patch("subprocess.run", return_value=mock_result)
+
+        with pytest.raises(RuntimeError, match="FFmpeg"):
+            apply_ken_burns(image_path, output_path, duration=5.0, effect="zoom_in")
+
+
+class TestImageToVideoClip:
+    """Test high-level image-to-video wrapper."""
+
+    def test_generates_output_file(self, mocker, tmp_path):
+        """Test that image_to_video_clip calls apply_ken_burns with correct params."""
+        image_path = tmp_path / "scene.png"
+        image_path.write_bytes(b"image")
+
+        mock_kb = mocker.patch("app.services.media_service.apply_ken_burns")
+
+        result = image_to_video_clip(
+            image_path=image_path,
+            duration=5.0,
+            scene_number=1,
+            total_scenes=3,
+            output_dir=tmp_path,
+        )
+
+        mock_kb.assert_called_once()
+        call_kwargs = mock_kb.call_args
+        assert call_kwargs[1]["effect"] == "zoom_in"  # scene 1
+        assert call_kwargs[1]["duration"] == 5.0
+
+    def test_scene_2_uses_diagonal_pan_effect(self, mocker, tmp_path):
+        image_path = tmp_path / "scene.png"
+        image_path.write_bytes(b"image")
+
+        mock_kb = mocker.patch("app.services.media_service.apply_ken_burns")
+
+        image_to_video_clip(
+            image_path=image_path,
+            duration=8.0,
+            scene_number=2,
+            total_scenes=5,
+            output_dir=tmp_path,
+        )
+
+        call_kwargs = mock_kb.call_args
+        assert call_kwargs[1]["effect"] == "diagonal_pan_rd"
+
+
+class TestAssembleVideoWithSceneDurations:
+    """Test that assemble_video uses scene_durations for clip matching."""
+
+    def test_trim_or_loop_called_when_durations_provided(self, mocker, tmp_path):
+        """When scene_durations is provided, trim_or_loop_clip should be called."""
+        mock_settings = MagicMock()
+        mock_settings.media_path = tmp_path
+        mock_settings.output_dir = tmp_path / "output"
+        mocker.patch("app.services.media_service.settings", mock_settings)
+
+        clip1 = tmp_path / "clip1.mp4"
+        clip2 = tmp_path / "clip2.mp4"
+        audio = tmp_path / "audio.mp3"
+        clip1.write_bytes(b"clip1")
+        clip2.write_bytes(b"clip2")
+        audio.write_bytes(b"audio")
+
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
+        mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
+        mocker.patch("app.services.media_service.concatenate_clips_with_crossfade", side_effect=lambda c, o, **kw: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
+        mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
+
+        mock_trim = mocker.patch(
+            "app.services.media_service.trim_or_loop_clip",
+            side_effect=lambda i, o, d: o,
+        )
+
+        assemble_video(
+            clip_paths=[clip1, clip2],
+            audio_path=audio,
+            video_format="short",
+            project_id="test_dur",
+            scene_durations=[5.0, 8.0],
+        )
+
+        assert mock_trim.call_count == 2
+        # Verify durations passed
+        calls = mock_trim.call_args_list
+        assert calls[0][0][2] == 5.0  # first clip, 5s
+        assert calls[1][0][2] == 8.0  # second clip, 8s
+
+    def test_no_trim_when_durations_not_provided(self, mocker, tmp_path):
+        """Without scene_durations, trim_or_loop_clip should NOT be called."""
+        mock_settings = MagicMock()
+        mock_settings.media_path = tmp_path
+        mock_settings.output_dir = tmp_path / "output"
+        mocker.patch("app.services.media_service.settings", mock_settings)
+
+        clip = tmp_path / "clip.mp4"
+        audio = tmp_path / "audio.mp3"
+        clip.write_bytes(b"clip")
+        audio.write_bytes(b"audio")
+
+        def mock_overlay(v, a, o):
+            o.parent.mkdir(parents=True, exist_ok=True)
+            o.write_bytes(b"narrated")
+            return o
+
+        mocker.patch("app.services.media_service.scale_and_pad", side_effect=lambda i, o, w, h: o)
+        mocker.patch("app.services.media_service.concatenate_clips", side_effect=lambda c, o, **kw: o)
+        mocker.patch("app.services.media_service.overlay_audio", side_effect=mock_overlay)
+        mocker.patch("app.services.media_service.validate_file_path", side_effect=lambda p, r: p)
+
+        mock_trim = mocker.patch("app.services.media_service.trim_or_loop_clip")
+
+        assemble_video(
+            clip_paths=[clip],
+            audio_path=audio,
+            video_format="short",
+            project_id="test_nodur",
+        )
+
+        mock_trim.assert_not_called()
+
+
+class TestConcatenateClipsWithCrossfade:
+    """Test crossfade concatenation logic."""
+
+    def test_single_clip_falls_back_to_simple_concat(self, mocker, tmp_path):
+        """Single clip should use concatenate_clips, not xfade."""
+        clip = tmp_path / "clip.mp4"
+        output = tmp_path / "output.mp4"
+        clip.write_bytes(b"video")
+
+        mock_concat = mocker.patch(
+            "app.services.media_service.concatenate_clips",
+            side_effect=lambda c, o, **kw: o,
+        )
+
+        concatenate_clips_with_crossfade([clip], output)
+
+        mock_concat.assert_called_once_with([clip], output)
+
+    def test_two_clips_uses_xfade_filter(self, mocker, tmp_path):
+        """Two clips should use FFmpeg xfade filter."""
+        clip1 = tmp_path / "clip1.mp4"
+        clip2 = tmp_path / "clip2.mp4"
+        output = tmp_path / "output.mp4"
+        clip1.write_bytes(b"video1")
+        clip2.write_bytes(b"video2")
+
+        mocker.patch("app.services.media_service.probe_duration", return_value=5.0)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        concatenate_clips_with_crossfade([clip1, clip2], output)
+
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert "-filter_complex" in args
+        fc_idx = args.index("-filter_complex")
+        fc_value = args[fc_idx + 1]
+        assert "xfade" in fc_value
+        assert "transition=fade" in fc_value
+        assert "[vout]" in fc_value
+
+    def test_three_clips_chains_xfade_filters(self, mocker, tmp_path):
+        """Three clips should chain two xfade filters."""
+        clips = [tmp_path / f"clip{i}.mp4" for i in range(3)]
+        for c in clips:
+            c.write_bytes(b"video")
+        output = tmp_path / "output.mp4"
+
+        mocker.patch("app.services.media_service.probe_duration", return_value=6.0)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_run = mocker.patch("subprocess.run", return_value=mock_result)
+
+        concatenate_clips_with_crossfade(clips, output)
+
+        args = mock_run.call_args[0][0]
+        fc_idx = args.index("-filter_complex")
+        fc_value = args[fc_idx + 1]
+        # Should have 2 xfade filters chained with ;
+        assert fc_value.count("xfade") == 2
+        assert ";" in fc_value
+
+    def test_ffmpeg_failure_raises(self, mocker, tmp_path):
+        """FFmpeg xfade failure should raise RuntimeError."""
+        clip1 = tmp_path / "clip1.mp4"
+        clip2 = tmp_path / "clip2.mp4"
+        output = tmp_path / "output.mp4"
+        clip1.write_bytes(b"video1")
+        clip2.write_bytes(b"video2")
+
+        mocker.patch("app.services.media_service.probe_duration", return_value=5.0)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "xfade filter error"
+        mocker.patch("subprocess.run", return_value=mock_result)
+
+        with pytest.raises(RuntimeError, match="FFmpeg"):
+            concatenate_clips_with_crossfade([clip1, clip2], output)

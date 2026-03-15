@@ -39,11 +39,13 @@ class CaptionChunk:
     text: str
     start: float
     end: float
+    words: list[WordTimestamp] | None = None  # Preserved for karaoke \kf timing
 
 
 async def generate_captions(
     audio_path: Path,
     script_text: str | None = None,
+    style: str | None = None,
 ) -> Path:
     """
     Main entry point — transcribe audio and generate ASS subtitle file.
@@ -52,6 +54,7 @@ async def generate_captions(
         audio_path: Path to the TTS audio file (MP3).
         script_text: Optional script text (unused for now, reserved for
                      future alignment improvements).
+        style: Caption animation style override. If None, uses config default.
 
     Returns:
         Path to the generated .ass subtitle file.
@@ -76,14 +79,16 @@ async def generate_captions(
         max_per_chunk=settings.captions_max_words_per_chunk,
     )
 
-    # Step 3: Generate ASS subtitle file
-    ass_path = _generate_ass_file(chunks)
+    # Step 3: Generate ASS subtitle file with style
+    effective_style = style or getattr(settings, "captions_style", "classic")
+    ass_path = _generate_ass_file(chunks, style=effective_style)
 
     logger.info(
-        "Captions generated — {} words → {} chunks → {}",
+        "Captions generated — {} words → {} chunks → {} (style={})",
         len(words),
         len(chunks),
         ass_path.name,
+        effective_style,
     )
     return ass_path
 
@@ -98,7 +103,7 @@ async def _transcribe_with_timestamps(audio_path: Path) -> list[WordTimestamp]:
     from openai import AsyncOpenAI
 
     settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=60.0)
 
     logger.debug("Calling Whisper API for word timestamps — {}", audio_path.name)
 
@@ -165,11 +170,21 @@ def _group_words(
             text = " ".join(w.word for w in current_words)
             if uppercase:
                 text = text.upper()
+            # Preserve word-level timestamps for karaoke/typewriter styles
+            chunk_words = [
+                WordTimestamp(
+                    word=w.word.upper() if uppercase else w.word,
+                    start=w.start,
+                    end=w.end,
+                )
+                for w in current_words
+            ]
             chunks.append(
                 CaptionChunk(
                     text=text,
                     start=current_words[0].start,
                     end=current_words[-1].end,
+                    words=chunk_words,
                 )
             )
             current_words = []
@@ -194,53 +209,39 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def _generate_ass_file(chunks: list[CaptionChunk]) -> Path:
+def _generate_ass_file(
+    chunks: list[CaptionChunk],
+    style: str = "classic",
+) -> Path:
     """
     Generate an ASS (Advanced SubStation Alpha) subtitle file.
 
-    Style:
-      - Bold white text with 4px black outline
-      - 1080x1920 coordinate space (9:16 vertical)
-      - Bottom-center alignment, 200px margin from bottom
-      - Font size and family from settings
+    Dispatches to style-specific generators from caption_styles module.
+    Falls back to classic style for unknown styles.
     """
+    from app.services.caption_styles import (
+        CaptionConfig,
+        build_ass_header,
+        build_caption_config,
+        generate_styled_lines,
+    )
+
     settings = get_settings()
 
     captions_dir = settings.captions_dir
     captions_dir.mkdir(parents=True, exist_ok=True)
     ass_path = captions_dir / f"captions_{uuid.uuid4().hex[:12]}.ass"
 
-    font_name = settings.captions_font
-    font_size = settings.captions_font_size
+    # Build config with the specified style
+    config = build_caption_config()
+    config.style = style
 
-    # ASS file header
-    header = f"""\
-[Script Info]
-Title: Auto-generated captions
-ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-    # Build dialogue lines
-    lines: list[str] = []
-    for chunk in chunks:
-        start = _format_ass_time(chunk.start)
-        end = _format_ass_time(chunk.end)
-        # Escape special ASS characters
-        text = chunk.text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
-        lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
+    # Build header and styled dialogue lines
+    header = build_ass_header(config)
+    lines = generate_styled_lines(chunks, config)
 
     content = header + "\n".join(lines) + "\n"
     ass_path.write_text(content, encoding="utf-8")
 
-    logger.debug("ASS subtitle file written — {} lines → {}", len(lines), ass_path)
+    logger.debug("ASS subtitle file written — {} lines, style={} → {}", len(lines), style, ass_path)
     return ass_path

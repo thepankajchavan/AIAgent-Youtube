@@ -15,6 +15,11 @@ from app.workers.db import get_sync_db
 settings = get_settings()
 
 
+VALID_CREATIVE_PRESETS = {"minimal", "cinematic", "energetic", "auto"}
+VALID_PACING_STYLES = {"auto", "uniform", "dramatic", "energetic"}
+VALID_THUMB_STYLES = {"auto", "ai", "frame"}
+
+
 def _parse_duration_and_topic(raw_args: str) -> tuple[int | None, str]:
     """Parse optional duration prefix from user input.
 
@@ -31,6 +36,54 @@ def _parse_duration_and_topic(raw_args: str) -> tuple[int | None, str]:
         duration = max(15, min(120, duration))
         return duration, topic
     return None, raw_args
+
+
+def _parse_flag(raw_args: str, flag_name: str, valid_values: set) -> tuple[str | None, str]:
+    """Generic flag parser for --flag value patterns."""
+    match = re.search(rf"--{flag_name}\s+(\w+)", raw_args, re.IGNORECASE)
+    if match:
+        value = match.group(1).lower()
+        topic = raw_args[:match.start()].strip() + " " + raw_args[match.end():].strip()
+        topic = topic.strip()
+        if value in valid_values:
+            return value, topic
+    return None, raw_args
+
+
+def _parse_style_flag(raw_args: str) -> tuple[str | None, str]:
+    """Parse optional --style flag from user input."""
+    return _parse_flag(raw_args, "style", VALID_CREATIVE_PRESETS)
+
+
+def _parse_lang_flag(raw_args: str) -> tuple[str | None, str]:
+    """Parse optional --lang flag (e.g. --lang es)."""
+    from app.services.translation_service import SUPPORTED_LANGUAGES, LANGUAGE_ALIASES
+    valid = set(SUPPORTED_LANGUAGES.keys()) | set(LANGUAGE_ALIASES.keys())
+    code, topic = _parse_flag(raw_args, "lang", valid)
+    if code:
+        from app.services.translation_service import resolve_language_code
+        code = resolve_language_code(code)
+    return code, topic
+
+
+def _parse_voice_flag(raw_args: str) -> tuple[str | None, str]:
+    """Parse optional --voice flag (accepts voice name or ID)."""
+    match = re.search(r"--voice\s+(\S+)", raw_args, re.IGNORECASE)
+    if match:
+        voice = match.group(1)
+        topic = raw_args[:match.start()].strip() + " " + raw_args[match.end():].strip()
+        return voice, topic.strip()
+    return None, raw_args
+
+
+def _parse_pace_flag(raw_args: str) -> tuple[str | None, str]:
+    """Parse optional --pace flag."""
+    return _parse_flag(raw_args, "pace", VALID_PACING_STYLES)
+
+
+def _parse_thumb_flag(raw_args: str) -> tuple[str | None, str]:
+    """Parse optional --thumb flag."""
+    return _parse_flag(raw_args, "thumb", VALID_THUMB_STYLES)
 
 
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,6 +108,13 @@ async def _generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE, vi
 
     raw_args = " ".join(context.args)
 
+    # Parse optional flags
+    creative_preset, raw_args = _parse_style_flag(raw_args)
+    language, raw_args = _parse_lang_flag(raw_args)
+    voice_id, raw_args = _parse_voice_flag(raw_args)
+    pacing_style, raw_args = _parse_pace_flag(raw_args)
+    thumb_style, raw_args = _parse_thumb_flag(raw_args)
+
     # Parse optional duration prefix (e.g. "30s topic" or "60sec topic")
     target_duration, topic = _parse_duration_and_topic(raw_args)
 
@@ -70,6 +130,8 @@ async def _generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE, vi
     format_emoji = "📱" if video_format == "short" else "🖥️"
     format_text = "9:16 Short" if video_format == "short" else "16:9 Long"
     duration_text = f"⏱️ Target: {target_duration}s\n" if target_duration else ""
+    style_text = f"🎬 Style: {creative_preset}\n" if creative_preset else ""
+    lang_text = f"🌍 Language: {language}\n" if language and language != "en" else ""
 
     safe_topic = escape_markdown(topic, version=1)
 
@@ -78,13 +140,19 @@ async def _generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE, vi
         f"{format_emoji} *Video generation started!*\n\n"
         f"📝 Topic: {safe_topic}\n"
         f"📐 Format: {format_text}\n"
-        f"{duration_text}\n"
+        f"{duration_text}"
+        f"{style_text}"
+        f"{lang_text}\n"
         f"_Progress updates will follow below..._",
         parse_mode="Markdown",
     )
 
     # Resolve visual strategy from settings
-    visual_strategy = settings.ai_video_strategy if settings.ai_video_enabled else "stock_only"
+    strategy = settings.ai_video_strategy
+    if strategy == "ai_images":
+        visual_strategy = strategy if settings.ai_images_enabled else "stock_only"
+    else:
+        visual_strategy = strategy if settings.ai_video_enabled else "stock_only"
 
     # Call FastAPI pipeline endpoint
     try:
@@ -106,6 +174,16 @@ async def _generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE, vi
             }
             if target_duration is not None:
                 body["target_duration"] = target_duration
+            if creative_preset is not None:
+                body["creative_preset"] = creative_preset
+            if language is not None:
+                body["language"] = language
+            if voice_id is not None:
+                body["voice_id"] = voice_id
+            if pacing_style is not None:
+                body["pacing_style"] = pacing_style
+            if thumb_style is not None:
+                body["thumbnail_style"] = thumb_style
 
             response = await client.post(
                 f"{settings.api_base_url}/api/v1/pipeline",
@@ -145,4 +223,94 @@ async def _generate_video(update: Update, context: ContextTypes.DEFAULT_TYPE, vi
         logger.error("Unexpected error: {}", exc)
         await ack_msg.edit_text(
             "❌ *Unexpected error*\n\nPlease try again later.", parse_mode="Markdown"
+        )
+
+
+async def autopilot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /autopilot on|off|status|queue command."""
+    if not update.message:
+        return
+
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "Usage:\n"
+            "`/autopilot on` — Enable auto-scheduling\n"
+            "`/autopilot off` — Disable auto-scheduling\n"
+            "`/autopilot status` — Show stats\n"
+            "`/autopilot queue` — Show upcoming queue",
+            parse_mode="Markdown",
+        )
+        return
+
+    action = args[0].lower()
+
+    if action == "status":
+        from app.services.auto_schedule_service import SchedulingBrain
+
+        from app.core.config import get_settings as _get_settings
+        _cfg = _get_settings()
+        schedule_times = getattr(_cfg, "auto_schedule_times", "10:00,18:00")
+        times_display = ", ".join(t.strip() + " UTC" for t in schedule_times.split(","))
+
+        brain = SchedulingBrain()
+        stats = await brain.get_stats()
+        health = stats.get("health_status", "unknown")
+
+        await update.message.reply_text(
+            f"*Auto-Pilot Status*\n\n"
+            f"Enabled: {'Yes' if stats['enabled'] else 'No'}\n"
+            f"Schedule: {times_display}\n"
+            f"Today: {stats['today_count']}/{stats['max_daily']} videos\n"
+            f"Remaining: {stats['remaining_today']}\n"
+            f"Health: {health}\n"
+            f"Niche: {stats['niche']}\n"
+            f"Strategy: {stats['visual_strategy']}",
+            parse_mode="Markdown",
+        )
+
+    elif action in ("on", "off"):
+        from app.services.auto_schedule_service import SchedulingBrain
+
+        brain = SchedulingBrain()
+        enabled = action == "on"
+        try:
+            await brain.set_enabled(enabled)
+            await brain.log_decision(
+                action="toggle_changed",
+                topic=None,
+                reason=f"Autopilot {'enabled' if enabled else 'disabled'} via Telegram by user {update.effective_user.id}",
+            )
+            await update.message.reply_text(
+                f"Auto-pilot {'enabled' if enabled else 'disabled'} (takes effect immediately).",
+                parse_mode="Markdown",
+            )
+        except Exception as exc:
+            await update.message.reply_text(
+                f"Failed to toggle autopilot: {exc}",
+                parse_mode="Markdown",
+            )
+
+    elif action == "queue":
+        from app.services.auto_schedule_service import SchedulingBrain
+
+        brain = SchedulingBrain()
+        queue = await brain.get_queue(limit=5)
+        if not queue:
+            await update.message.reply_text("No topics in queue.", parse_mode="Markdown")
+            return
+
+        lines = ["*Upcoming Queue*\n"]
+        for i, item in enumerate(queue, 1):
+            lines.append(
+                f"{i}. {item['topic'][:40]}\n"
+                f"   Score: {item['quality_score']:.0f} | "
+                f"Time: {item['scheduled_for']}"
+            )
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    else:
+        await update.message.reply_text(
+            "Unknown action. Use: `/autopilot on|off|status|queue`",
+            parse_mode="Markdown",
         )

@@ -6,10 +6,15 @@ from telegram.ext import Application, CommandHandler, TypeHandler
 
 from app.core.config import get_settings
 from app.telegram.handlers.admin import cancel_handler, retry_handler
+from app.telegram.handlers.analytics import (
+    analytics_handler,
+    patterns_handler,
+    trends_handler,
+)
 from app.telegram.handlers.errors import error_handler
 from app.telegram.handlers.start import help_handler, start_handler
 from app.telegram.handlers.status import list_handler, status_handler
-from app.telegram.handlers.video import video_handler, video_long_handler
+from app.telegram.handlers.video import autopilot_handler, video_handler, video_long_handler
 from app.telegram.middleware import auth_middleware, rate_limit_middleware
 
 settings = get_settings()
@@ -32,6 +37,10 @@ def build_bot_application() -> Application:
     app.add_handler(CommandHandler("list", list_handler))
     app.add_handler(CommandHandler("cancel", cancel_handler))
     app.add_handler(CommandHandler("retry", retry_handler))
+    app.add_handler(CommandHandler("trends", trends_handler))
+    app.add_handler(CommandHandler("analytics", analytics_handler))
+    app.add_handler(CommandHandler("patterns", patterns_handler))
+    app.add_handler(CommandHandler("autopilot", autopilot_handler))
 
     # Global error handler
     app.add_error_handler(error_handler)

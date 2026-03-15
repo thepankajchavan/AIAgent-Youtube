@@ -80,6 +80,7 @@ def generate_audio_task(
 
     # SINGLE session for entire task
     with get_sync_db() as db:
+        project = None
         try:
             # 1. Load project
             project = db.get(VideoProject, project_id)
@@ -101,12 +102,65 @@ def generate_audio_task(
             )
 
             # 3. Generate audio (with unique filename to avoid collision on retry)
-            audio_path: Path = _run_async(
-                generate_speech(
-                    text=script_text,
-                    output_filename=f"tts_{project_id}_{uuid.uuid4().hex[:8]}.mp3",
+            from app.core.config import get_settings as _get_settings
+            _settings = _get_settings()
+            _mood = pipeline_data.get("script_data", {}).get("mood", "uplifting")
+
+            # Resolve voice_id (multi-voice selection)
+            _voice_id = None
+            if getattr(_settings, "multi_voice_enabled", False):
+                try:
+                    from app.services.voice_selection_service import select_voice
+                    from app.services.llm_service import _detect_niche
+                    _niche = _detect_niche(pipeline_data.get("script_data", {}).get("title", ""))
+                    _user_voice = pipeline_data.get("voice_id")
+                    _voice_id = select_voice(niche=_niche, mood=_mood, user_voice_id=_user_voice)
+                    project.voice_id = _voice_id
+                    logger.info("Multi-voice selected — niche={} mood={} voice={}", _niche, _mood, _voice_id)
+                except Exception as voice_exc:
+                    logger.warning("Multi-voice selection failed: {}", voice_exc)
+
+            # Per-beat TTS: split script into beats with varying expressiveness
+            if getattr(_settings, "per_beat_tts_enabled", False) and getattr(
+                _settings, "voice_profile_enabled", True
+            ):
+                from app.services.beat_tts_service import generate_speech_per_beat
+                _scenes = pipeline_data.get("script_data", {}).get("scenes")
+                audio_path: Path = _run_async(
+                    generate_speech_per_beat(
+                        script_text=script_text,
+                        mood=_mood,
+                        scenes=_scenes,
+                        voice_id=_voice_id,
+                    )
                 )
-            )
+                logger.info("Per-beat TTS generated — mood={} voice={}", _mood, _voice_id)
+
+            else:
+                # Standard TTS with optional mood-based voice profile
+                _tts_kwargs: dict = {
+                    "text": script_text,
+                    "output_filename": f"tts_{project_id}_{uuid.uuid4().hex[:8]}.mp3",
+                }
+                if _voice_id:
+                    _tts_kwargs["voice_id"] = _voice_id
+
+                if getattr(_settings, "voice_profile_enabled", True):
+                    from app.services.voice_profile_service import get_voice_profile_for_mood
+                    _profile = get_voice_profile_for_mood(_mood)
+                    _tts_kwargs.update({
+                        "stability": _profile.stability,
+                        "similarity_boost": _profile.similarity_boost,
+                        "style": _profile.style,
+                    })
+                    logger.info(
+                        "Voice profile applied — mood={} stability={} style={}",
+                        _mood, _profile.stability, _profile.style,
+                    )
+
+                audio_path: Path = _run_async(
+                    generate_speech(**_tts_kwargs)
+                )
 
             # 4. Probe audio duration for downstream sync checks
             audio_duration = probe_duration(audio_path)
@@ -222,6 +276,7 @@ def fetch_visuals_task(
 
     # SINGLE session for entire task
     with get_sync_db() as db:
+        project = None
         try:
             # 1. Load project
             project = db.get(VideoProject, project_id)

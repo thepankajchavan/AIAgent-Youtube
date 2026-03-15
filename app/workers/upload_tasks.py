@@ -103,6 +103,14 @@ def upload_to_youtube_task(
                 telegram_message_id=project.telegram_message_id,
             )
 
+            # 3b. Persist YouTube metadata to project (for analytics)
+            project.youtube_title = script_data.get("title", "")[:200]
+            project.youtube_description = script_data.get("description", "")
+            project.youtube_tags = script_data.get("tags", [])
+            project.youtube_hashtags = script_data.get("hashtags", [])
+            project.youtube_category = script_data.get("category", settings.youtube_default_category)
+            db.flush()
+
             # 4. Upload to YouTube (with progress events at 25% milestones)
             last_milestone = [0]  # mutable for closure
 
@@ -175,7 +183,18 @@ def upload_to_youtube_task(
         except Exception as exc:
             logger.error("YouTube upload failed for project={}: {}", project_id, exc)
 
-            if self.request.retries >= self.max_retries:
+            # Auth errors are permanent — skip retries to avoid wasting minutes
+            is_auth_error = (
+                "OAuth token expired" in str(exc)
+                or "RefreshError" in type(exc).__name__
+            )
+
+            if is_auth_error or self.request.retries >= self.max_retries:
+                if is_auth_error:
+                    logger.error(
+                        "YouTube auth error (permanent) — skipping retries. "
+                        "Run: python scripts/refresh_youtube_token.py"
+                    )
                 if project is not None:
                     emit_status_update(
                         project_id=project_id,
@@ -187,7 +206,7 @@ def upload_to_youtube_task(
                     )
                 _mark_project_failed(
                     project_id,
-                    f"YouTube upload failed after {self.max_retries + 1} attempts: {exc}",
+                    f"YouTube upload failed: {exc}",
                 )
                 try:
                     asyncio.run(DeadLetterQueue.add_failed_task(

@@ -75,13 +75,14 @@ CONTENT NICHES: fascinating facts, motivation, science, technology, space, histo
 
 SCRIPT RULES:
 1. Length: STRICTLY 80-100 words. Count carefully. This produces ~30-40 seconds of TTS audio.
-2. Structure (4-5 visual beats, each separated by a blank line):
+2. Structure (5-6 visual beats, each separated by a blank line):
    - HOOK (1 sentence): A shocking claim, wild question, or jaw-dropping fact that stops the scroll instantly.
    - BUILD 1 (1-2 sentences): Expand with a vivid, concrete detail that pulls the viewer deeper.
    - BUILD 2 (1-2 sentences): Add another layer — a contrast, escalation, or surprising angle.
+   - BUILD 3 (1-2 sentences): Deepen with a twist, comparison, or escalation.
    - CLIMAX (1 sentence): The biggest reveal, twist, or mind-blowing conclusion.
    - KICKER (optional, 1 sentence): A short punchy closer that leaves the viewer thinking.
-3. Do NOT include any "like", "subscribe", "follow", or CTA text — a pre-made outro handles this.
+3. Do NOT include any "like", "subscribe", "follow", or CTA text — the video ends with content only.
 4. Short, punchy sentences. Conversational and confident — as if telling a friend something incredible.
 5. NEVER use markdown formatting (no **, *, #, __). Plain text only.
 6. Open with "you" or a direct address to make it personal. Example: "You won't believe..." or "Right now, there's a..."
@@ -93,26 +94,109 @@ SEARCH KEYWORDS:
 - Be specific and visual: "aerial city skyline night lights" beats "city". "close up human eye iris" beats "eye".
 - Think: what would a viewer SEE on screen while hearing this narration?
 
-TAGS & SEO:
+VISUAL HINT:
+- For each scene, provide a short 10-20 word cinematic description of what the viewer should SEE.
+- Include camera angle (aerial, close-up, wide), lighting (golden hour, neon, overcast), and dominant colors.
+- This guides AI video generation. Example: "Wide aerial shot of frozen tundra, overcast sky, muted blue-grey palette"
+
+TAGS & SEO (critical for discoverability):
 - Provide 10-15 YouTube tags: mix broad viral tags (e.g. "facts", "didyouknow", "mindblown") with niche-specific tags for the topic.
-- Provide 5-8 hashtags WITH # symbol for the video description (YouTube shows the last 3 hashtags above the title).
+- Provide 5-8 hashtags WITH # symbol. IMPORTANT: If trending hashtags are provided below, you MUST include at least 3 of them in your hashtags list — these are currently trending on YouTube and will boost discoverability.
 - Pick the best YouTube category for this content from: education, science, entertainment, howto, people, comedy, news.
-- Write a 2-3 sentence SEO-optimized description with relevant keywords that hooks viewers from search results.
+- Write a 2-3 sentence SEO description that includes trending keywords naturally. End with a curiosity hook like "Wait for the ending..." or "The last fact will shock you."
+
+TITLE RULES (optimize for clicks):
+- Under 60 chars, curiosity-driven
+- Use one of these proven viral patterns:
+  * Number + Shocking Claim: "3 Things About Space That Will Terrify You"
+  * "This X..." opener: "This 2000-Year-Old Battery Still Works"
+  * Contrast/Paradox: "The Quietest Room on Earth Drives You Insane"
+  * Personal "You": "You've Been Lied To About Dinosaurs"
+- Include 1 trending keyword in the title if it fits naturally
+
+8. MOOD: Provide a single mood tag for background music selection.
+   Options: energetic, calm, dramatic, mysterious, uplifting, dark, happy, sad, epic, chill.
 
 Return ONLY a JSON object — no markdown fences, no explanation:
 {
   "title": "Catchy YouTube title (under 60 chars, curiosity-driven, no clickbait ALL CAPS)",
   "script": "Full narration text with blank lines between beats",
   "scenes": [
-    {"narration": "Hook text...", "search_keywords": ["specific keyword 1", "specific keyword 2"]},
-    {"narration": "Build 1 text...", "search_keywords": ["specific keyword 1", "specific keyword 2"]},
+    {"narration": "Hook text...", "search_keywords": ["specific keyword 1", "specific keyword 2"], "visual_hint": "Wide establishing shot, dramatic lighting, cool blue tones"},
+    {"narration": "Build 1 text...", "search_keywords": ["specific keyword 1", "specific keyword 2"], "visual_hint": "Close-up detail shot, warm amber light, shallow depth of field"},
     ...
   ],
   "tags": ["tag1", "tag2", ...] (10-15 YouTube tags, no # symbol),
   "hashtags": ["#Shorts", "#Facts", "#Science", "#Viral", "#MindBlown"],
   "category": "education",
-  "description": "2-3 sentence SEO-optimized YouTube description with keywords"
-}\
+  "description": "2-3 sentence SEO-optimized YouTube description with keywords",
+  "mood": "uplifting"
+}
+
+## EXAMPLE SCRIPTS (study these for tone, structure, and quality):
+
+### Example 1 — Science
+Topic: "The deepest hole ever dug"
+```json
+{
+  "title": "Humans Dug So Deep They Heard Screams from Hell",
+  "script": "You're standing in Siberia, staring at a rusty metal cap bolted to the ground. Beneath it lies the deepest hole humans ever dug — 12,262 meters straight down.\n\nIt took Soviet scientists 19 years to drill it. They expected solid rock. Instead, they found 180-degree temperatures and ancient microscopic fossils 6 kilometers underground.\n\nThe rock at that depth behaves like plastic — it flows and seals the drill hole shut behind you.\n\nThey had to stop. Not because of mythical screams, but because the Earth itself was fighting back. And we barely scratched 0.2% of the way to the core.",
+  "scenes": [
+    {"narration": "You're standing in Siberia, staring at a rusty metal cap bolted to the ground. Beneath it lies the deepest hole humans ever dug — 12,262 meters straight down.", "search_keywords": ["aerial siberia tundra landscape", "rusty metal cap ground industrial"], "visual_hint": "Wide aerial shot of frozen Siberian tundra, overcast sky, muted blue-grey palette"},
+    {"narration": "It took Soviet scientists 19 years to drill it. They expected solid rock. Instead, they found 180-degree temperatures and ancient microscopic fossils 6 kilometers underground.", "search_keywords": ["drilling rig industrial close up", "microscopic fossils science laboratory"], "visual_hint": "Close-up of industrial drilling equipment, warm orange sparks, gritty textures"},
+    {"narration": "The rock at that depth behaves like plastic — it flows and seals the drill hole shut behind you.", "search_keywords": ["molten rock flowing lava texture", "underground tunnel deep earth"], "visual_hint": "Macro shot of molten rock flowing, deep red-orange glow, dark surroundings"},
+    {"narration": "They had to stop. Not because of mythical screams, but because the Earth itself was fighting back.", "search_keywords": ["earth crust layers geological cross section", "drilling equipment abandoned industrial"], "visual_hint": "Low-angle shot of abandoned equipment, dramatic shadows, desaturated cold tones"},
+    {"narration": "And we barely scratched 0.2% of the way to the core.", "search_keywords": ["earth core animation planet interior", "space view earth rotating"], "visual_hint": "Pull-out from Earth's surface to space, deep blacks with glowing planetary core"}
+  ],
+  "tags": ["science", "geology", "kolaboerhole", "deepesthole", "earthscience", "facts", "didyouknow", "mindblown", "soviet", "drilling", "geology facts"],
+  "hashtags": ["#Shorts", "#Science", "#Facts", "#MindBlown", "#Geology"],
+  "category": "science",
+  "description": "The Kola Superdeep Borehole is the deepest artificial point on Earth at 12,262 meters. Soviet scientists drilled for 19 years and discovered things that changed our understanding of the planet.",
+  "mood": "mysterious"
+}
+```
+
+### Example 2 — History
+Topic: "Cleopatra and the pyramids"
+```json
+{
+  "title": "Cleopatra Lived Closer to WiFi Than to the Pyramids",
+  "script": "You think Cleopatra saw the pyramids being built. She didn't — not even close.\n\nThe Great Pyramid was already 2,500 years old when Cleopatra was born. That's the same gap between us and ancient Rome.\n\nShe lived closer in time to the Moon landing than to the construction of the pyramids she's famous for standing beside.\n\nCleopatra spoke nine languages, commanded a navy, and ruled Egypt for 21 years. She wasn't just a queen — she was the last pharaoh of a civilization already ancient in her own time.",
+  "scenes": [
+    {"narration": "You think Cleopatra saw the pyramids being built. She didn't — not even close.", "search_keywords": ["pyramids giza sunset dramatic", "ancient egypt aerial desert"], "visual_hint": "Wide establishing shot of pyramids at golden hour, warm amber tones, dramatic sky"},
+    {"narration": "The Great Pyramid was already 2,500 years old when Cleopatra was born. That's the same gap between us and ancient Rome.", "search_keywords": ["ancient roman colosseum ruins", "timeline history animation"], "visual_hint": "Dolly shot through ancient Roman ruins, warm sunlight, cinematic depth of field"},
+    {"narration": "She lived closer in time to the Moon landing than to the construction of the pyramids she's famous for standing beside.", "search_keywords": ["moon landing apollo astronaut", "pyramid sphinx close up"], "visual_hint": "Split-feel contrast: moonscape silver-white transitioning to desert gold tones"},
+    {"narration": "Cleopatra spoke nine languages, commanded a navy, and ruled Egypt for 21 years.", "search_keywords": ["ancient ship sailing mediterranean", "egyptian queen statue art"], "visual_hint": "Tracking shot of ancient ship on turquoise water, golden light, epic scale"},
+    {"narration": "She wasn't just a queen — she was the last pharaoh of a civilization already ancient in her own time.", "search_keywords": ["egyptian hieroglyphics temple wall", "sunset nile river egypt"], "visual_hint": "Slow push-in on hieroglyphics in temple, warm torch-lit amber, mysterious shadows"}
+  ],
+  "tags": ["history", "cleopatra", "pyramids", "ancientegypt", "historyfacts", "didyouknow", "mindblown", "pharaoh", "education", "worldhistory"],
+  "hashtags": ["#Shorts", "#History", "#Facts", "#Cleopatra", "#MindBlown"],
+  "category": "education",
+  "description": "Cleopatra lived closer to the invention of WiFi than to the building of the Great Pyramid. The timeline of ancient Egypt is far more mind-bending than most people realize.",
+  "mood": "dramatic"
+}
+```
+
+### Example 3 — Motivation
+Topic: "Why most people quit too early"
+```json
+{
+  "title": "You're Probably 2 Feet from Gold Right Now",
+  "script": "You've been grinding for months and you see zero results. So you quit. Everyone does.\n\nDuring the Gold Rush, a man named Darby drilled for weeks and found nothing. He sold his equipment for scrap. The buyer hired a geologist — and struck gold three feet from where Darby stopped.\n\nThree feet. That's all that separated failure from a fortune.\n\nMost people don't fail because they lack talent. They fail because they stop digging one layer before the breakthrough. Your gold is closer than you think.",
+  "scenes": [
+    {"narration": "You've been grinding for months and you see zero results. So you quit. Everyone does.", "search_keywords": ["tired person working late laptop", "frustrated man office stress"], "visual_hint": "Close-up of tired face lit by laptop screen, dark room, cool blue-white light"},
+    {"narration": "During the Gold Rush, a man named Darby drilled for weeks and found nothing. He sold his equipment for scrap.", "search_keywords": ["gold mining vintage historical", "abandoned mine equipment rusty"], "visual_hint": "Wide shot of dusty mining landscape, sepia-warm vintage tones, overcast sky"},
+    {"narration": "The buyer hired a geologist — and struck gold three feet from where Darby stopped.", "search_keywords": ["gold nugget sparkling close up", "mining underground tunnel discovery"], "visual_hint": "Extreme close-up of gold glinting in rock, warm golden light, shallow depth of field"},
+    {"narration": "Three feet. That's all that separated failure from a fortune.", "search_keywords": ["measuring tape close up detail", "golden light rays breakthrough"], "visual_hint": "Dramatic low-angle light breaking through darkness, golden rays, high contrast"},
+    {"narration": "Most people don't fail because they lack talent. They fail because they stop digging one layer before the breakthrough. Your gold is closer than you think.", "search_keywords": ["person climbing mountain summit sunrise", "light end of tunnel hope"], "visual_hint": "Silhouette climbing toward sunrise summit, warm golden-orange horizon, epic wide shot"}
+  ],
+  "tags": ["motivation", "success", "mindset", "nevergiveup", "goldrush", "inspiration", "grind", "entrepreneur", "discipline", "breakthrough"],
+  "hashtags": ["#Shorts", "#Motivation", "#NeverGiveUp", "#Mindset", "#Success"],
+  "category": "education",
+  "description": "The story of R.U. Darby and the Gold Rush teaches one of the most powerful lessons about persistence. Most people quit just before their biggest breakthrough.",
+  "mood": "uplifting"
+}
+```\
 """
 
 LONG_SYSTEM_PROMPT = (
@@ -145,11 +229,72 @@ def _system_prompt(video_format: str, target_duration: int | None = None) -> str
     return SHORT_SYSTEM_PROMPT
 
 
+# ── Niche Tone Templates ─────────────────────────────────────────
+
+NICHE_TONE_TEMPLATES: dict[str, str] = {
+    "science": (
+        "TONE: Curious and awe-inspiring. Use precise scientific language but keep it accessible. "
+        "Lead with a mind-blowing fact. Compare scale to everyday objects. "
+        "End with an implication that makes the viewer rethink something."
+    ),
+    "history": (
+        "TONE: Narrative and cinematic. You are telling a story, not listing facts. "
+        "Set the scene with time and place. Use present tense for immediacy. "
+        "End with a twist or connection to today."
+    ),
+    "technology": (
+        "TONE: Forward-looking and slightly breathless. Emphasize what's NEW and WHY it matters. "
+        "One concrete example beats three abstract claims. "
+        "End with what this means for the viewer personally."
+    ),
+    "motivation": (
+        "TONE: Raw and personal. Use second-person ('you') throughout. "
+        "Start with a painful truth, then flip it. Short punchy sentences. "
+        "End with a single actionable takeaway."
+    ),
+    "psychology": (
+        "TONE: Intriguing and slightly unsettling. Name the cognitive bias or phenomenon. "
+        "Give a relatable example the viewer has experienced. "
+        "End with 'and you've been doing it your whole life' energy."
+    ),
+    "space": (
+        "TONE: Grand and humbling. Use extreme numbers and distances. "
+        "Compare cosmic scales to human experience. "
+        "End with existential wonder, not fear."
+    ),
+    "entertainment": (
+        "TONE: Gossipy and fast. Use insider language. "
+        "Reveal something most fans don't know. "
+        "End with a cliffhanger or shocking detail."
+    ),
+}
+
+NICHE_KEYWORDS: dict[str, list[str]] = {
+    "science": ["science", "physics", "chemistry", "biology", "experiment", "research", "study", "atom", "molecule", "dna"],
+    "history": ["history", "ancient", "war", "empire", "century", "civilization", "king", "queen", "medieval", "dynasty"],
+    "technology": ["tech", "ai", "robot", "computer", "software", "app", "digital", "algorithm", "internet", "cyber"],
+    "motivation": ["motivation", "success", "mindset", "habit", "discipline", "goal", "productivity", "hustle", "grind"],
+    "psychology": ["psychology", "brain", "mind", "behavior", "cognitive", "bias", "mental", "emotion", "anxiety", "therapy"],
+    "space": ["space", "planet", "star", "galaxy", "universe", "nasa", "moon", "mars", "asteroid", "black hole", "cosmos"],
+    "entertainment": ["movie", "film", "celebrity", "actor", "music", "game", "netflix", "show", "hollywood", "anime"],
+}
+
+
+def _detect_niche(topic: str) -> str | None:
+    """Detect content niche from topic string via word-boundary keyword matching."""
+    topic_lower = topic.lower()
+    for niche, keywords in NICHE_KEYWORDS.items():
+        if any(re.search(rf"\b{re.escape(kw)}\b", topic_lower) for kw in keywords):
+            return niche
+    return None
+
+
 def _user_prompt(
     topic: str,
     video_format: str,
     search_context: str | None = None,
     target_duration: int | None = None,
+    trending_context: str | None = None,
 ) -> str:
     context_block = ""
     if search_context:
@@ -162,6 +307,10 @@ def _user_prompt(
             "--- END RESEARCH ---\n\n"
         )
 
+    trending_block = ""
+    if trending_context:
+        trending_block = f"\n{trending_context}"
+
     if video_format == "short":
         if target_duration:
             target_words = int(target_duration * 2.5)
@@ -170,14 +319,25 @@ def _user_prompt(
             word_reminder = f"{word_min}-{word_max} words"
         else:
             word_reminder = "80-100 words"
+
+        # Niche tone template injection
+        niche_block = ""
+        if getattr(settings, "niche_templates_enabled", True):
+            niche = _detect_niche(topic)
+            if niche and niche in NICHE_TONE_TEMPLATES:
+                niche_block = f"\n\n{NICHE_TONE_TEMPLATES[niche]}"
+                logger.debug("Niche template injected: {}", niche)
+
         return (
             f"Write a viral YouTube Short script about: {topic}\n"
             f"{context_block}"
             "Make it fascinating, dramatic, and impossible to scroll past. "
-            f"Remember: {word_reminder}, 4-5 visual beats, and specific "
+            f"Remember: {word_reminder}, 5-6 visual beats, and specific "
             "stock footage search keywords for each scene."
+            f"{niche_block}"
+            f"{trending_block}"
         )
-    return f"Write a detailed YouTube video script about: {topic}{context_block}"
+    return f"Write a detailed YouTube video script about: {topic}{context_block}{trending_block}"
 
 
 # ═════════════════════════════════════════════════════════════
@@ -322,6 +482,8 @@ def _ensure_scenes(result: dict) -> None:
                 scene["narration"] = ""
             if "search_keywords" not in scene or not isinstance(scene["search_keywords"], list):
                 scene["search_keywords"] = []
+            if "visual_hint" not in scene or not scene.get("visual_hint"):
+                scene["visual_hint"] = scene.get("narration", "")
         scenes_valid = all_ok
 
     if not scenes_valid:
@@ -387,10 +549,10 @@ def _validate_script_quality(result: dict, video_format: str) -> list[str]:
             issues.append(f"Script too long: {word_count} words (need 80-100)")
 
         scenes = result.get("scenes", [])
-        if len(scenes) < 3:
-            issues.append(f"Only {len(scenes)} scenes (need 4-5)")
-        elif len(scenes) > 7:
-            issues.append(f"Too many scenes: {len(scenes)} (need 4-5)")
+        if len(scenes) < 4:
+            issues.append(f"Only {len(scenes)} scenes (need 5-6)")
+        elif len(scenes) > 8:
+            issues.append(f"Too many scenes: {len(scenes)} (need 5-6)")
 
         # Check scenes have search keywords
         empty_kw = sum(1 for s in scenes if not s.get("search_keywords"))
@@ -411,6 +573,20 @@ def _validate_script_quality(result: dict, video_format: str) -> list[str]:
     if len(title) > 70:
         issues.append(f"Title too long: {len(title)} chars (max 60)")
 
+    # Hook strength scoring (only for shorts)
+    if video_format == "short" and script:
+        try:
+            from app.services.hook_scorer_service import score_hook
+            hook_result = score_hook(script)
+            hook_min = getattr(settings, "hook_min_score", 0.3)
+            if hook_result.total < hook_min:
+                issues.append(
+                    f"Weak hook (score {hook_result.total:.2f}/{hook_min}). "
+                    f"{hook_result.feedback}"
+                )
+        except Exception:
+            pass  # Don't fail validation if hook scoring breaks
+
     return issues
 
 
@@ -420,6 +596,7 @@ async def _generate_with_quality_retry(
     provider: LLMProvider,
     search_context: str | None = None,
     target_duration: int | None = None,
+    trending_context: str | None = None,
 ) -> dict:
     """
     Layer 3: Generate script with quality validation and corrective feedback.
@@ -430,7 +607,7 @@ async def _generate_with_quality_retry(
     Up to MAX_QUALITY_RETRIES corrective retries.
     """
     system = _system_prompt(video_format, target_duration)
-    user_msg = _user_prompt(topic, video_format, search_context, target_duration)
+    user_msg = _user_prompt(topic, video_format, search_context, target_duration, trending_context)
     messages: list[dict] = [{"role": "user", "content": user_msg}]
 
     best_result: dict | None = None
@@ -541,6 +718,7 @@ async def generate_script(
     provider: LLMProvider = LLMProvider.OPENAI,
     search_context: str | None = None,
     target_duration: int | None = None,
+    trending_context: str | None = None,
 ) -> dict:
     """
     Generate a video script for the given topic.
@@ -554,6 +732,7 @@ async def generate_script(
     Args:
         target_duration: Target video duration in seconds. Adjusts word count
             in the LLM prompt (~2.5 words/sec TTS rate).
+        trending_context: Formatted trending data block to inject into prompt.
 
     Returns a dict with: title, script, scenes, tags, description.
 
@@ -592,7 +771,7 @@ async def generate_script(
     # 3. Generate with primary provider + quality retry
     try:
         result = await _generate_with_quality_retry(
-            sanitized_topic, video_format, provider, search_context, target_duration
+            sanitized_topic, video_format, provider, search_context, target_duration, trending_context
         )
         logger.info(
             "Script generated — provider={} title='{}' words={} scenes={}",
@@ -620,7 +799,7 @@ async def generate_script(
 
         try:
             result = await _generate_with_quality_retry(
-                sanitized_topic, video_format, fallback, search_context, target_duration
+                sanitized_topic, video_format, fallback, search_context, target_duration, trending_context
             )
             logger.info(
                 "Script generated via FALLBACK — provider={} title='{}' words={} scenes={}",

@@ -306,7 +306,7 @@ class DLQTaskResponse(BaseModel):
 
     task_id: str
     task_name: str
-    project_id: int | None
+    project_id: str | None
     exception_type: str
     exception_message: str
     failed_at: str
@@ -352,7 +352,7 @@ async def list_dlq_tasks(
                 task_id=task["task_id"],
                 task_name=task["task_name"],
                 project_id=(
-                    int(task["project_id"])
+                    task["project_id"]
                     if task.get("project_id") and task["project_id"] != "None"
                     else None
                 ),
@@ -432,7 +432,7 @@ async def retry_dlq_task(
         )
 
     # Get project from database
-    result = await db.execute(select(VideoProject).where(VideoProject.id == int(project_id)))
+    result = await db.execute(select(VideoProject).where(VideoProject.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
@@ -451,7 +451,7 @@ async def retry_dlq_task(
     # Trigger new pipeline
     from app.workers.pipeline_tasks import run_pipeline
 
-    run_pipeline.delay(project_id=int(project_id))
+    run_pipeline.delay(project_id=project_id)
 
     logger.info(f"Retrying DLQ task {task_id} for project {project_id}")
 

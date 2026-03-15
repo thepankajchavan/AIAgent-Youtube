@@ -23,11 +23,17 @@ router = APIRouter(prefix="/api/v1/pipeline", tags=["pipeline"])
 
 
 def _resolve_visual_strategy(request: PipelineRequest) -> str:
-    """Resolve visual strategy, enforcing AI_VIDEO_ENABLED gate."""
+    """Resolve visual strategy, enforcing AI_VIDEO_ENABLED / AI_IMAGES_ENABLED gate."""
     settings = get_settings()
     strategy = request.visual_strategy.value
 
-    if strategy != VisualStrategyEnum.STOCK_ONLY.value and not settings.ai_video_enabled:
+    if strategy == VisualStrategyEnum.AI_IMAGES.value:
+        if not settings.ai_images_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="AI image generation is not enabled. Set AI_IMAGES_ENABLED=true to use visual_strategy='ai_images'.",
+            )
+    elif strategy != VisualStrategyEnum.STOCK_ONLY.value and not settings.ai_video_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -104,6 +110,8 @@ async def trigger_pipeline(
             visual_strategy=visual_strategy,
             ai_video_provider=request.ai_video_provider,
             target_duration=request.target_duration,
+            language=request.language,
+            voice_id=request.voice_id,
         )
 
         # 3. Store the Celery task ID on the project
@@ -184,6 +192,8 @@ async def trigger_batch_pipeline(
                     visual_strategy=visual_strategy,
                     ai_video_provider=req.ai_video_provider,
                     target_duration=req.target_duration,
+                    language=req.language,
+                    voice_id=req.voice_id,
                 )
 
                 project.celery_task_id = celery_result.id

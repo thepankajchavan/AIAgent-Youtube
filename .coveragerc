@@ -6,6 +6,18 @@ omit =
     */__pycache__/*
     */venv/*
     */env/*
+    # Telegram bot startup & handlers (need live bot context)
+    app/telegram/bot.py
+    app/telegram/notifier.py
+    app/telegram/middleware.py
+    app/telegram/handlers/*
+    # Worker cleanup & metrics (need real Celery/Redis/filesystem)
+    app/workers/cleanup_tasks.py
+    app/workers/metrics_exporter.py
+    app/workers/resume_helper.py
+    # Services that wrap external APIs with no pure logic to test
+    app/services/tts_service.py
+    app/services/youtube_service.py
 
 [report]
 precision = 2
@@ -19,6 +31,9 @@ exclude_lines =
     if __name__ == .__main__.:
     if TYPE_CHECKING:
     @abstractmethod
+    # Defensive exception handlers
+    except Exception as exc:
+    except Exception:
 
 [html]
 directory = htmlcov

@@ -1,0 +1,39 @@
+[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,28,&H00FFFFFF&,&H0000FFFF&,&H00000000&,&H80000000&,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.64,Default,,0,0,0,,DID YOU KNOW
+Dialogue: 0,0:00:00.64,0:00:01.78,Default,,0,0,0,,A WINDOWS 11
+Dialogue: 0,0:00:01.78,0:00:02.58,Default,,0,0,0,,BUG IS CRIPPLING
+Dialogue: 0,0:00:02.58,0:00:03.84,Default,,0,0,0,,MILLIONS OF PCS
+Dialogue: 0,0:00:04.72,0:00:05.44,Default,,0,0,0,,IMAGINE YOUR DRIVE
+Dialogue: 0,0:00:05.44,0:00:07.24,Default,,0,0,0,,C SUDDENLY INACCESSIBLE
+Dialogue: 0,0:00:08.10,0:00:09.18,Default,,0,0,0,,MICROSOFT HAS CONFIRMED
+Dialogue: 0,0:00:09.18,0:00:10.36,Default,,0,0,0,,THE ISSUE AFFECTING
+Dialogue: 0,0:00:10.36,0:00:11.04,Default,,0,0,0,,OVER 10
+Dialogue: 0,0:00:11.40,0:00:12.42,Default,,0,0,0,,OF USERS GLOBALLY
+Dialogue: 0,0:00:13.08,0:00:13.56,Default,,0,0,0,,IT'S NOT JUST
+Dialogue: 0,0:00:13.56,0:00:14.44,Default,,0,0,0,,A MINOR GLITCH
+Dialogue: 0,0:00:15.72,0:00:16.86,Default,,0,0,0,,FRUSTRATED USERS ARE
+Dialogue: 0,0:00:16.86,0:00:17.42,Default,,0,0,0,,STARING AT BLANK
+Dialogue: 0,0:00:17.42,0:00:17.98,Default,,0,0,0,,SCREENS
+Dialogue: 0,0:00:18.56,0:00:19.46,Default,,0,0,0,,UNABLE TO ACCESS
+Dialogue: 0,0:00:19.46,0:00:20.20,Default,,0,0,0,,CRITICAL DATA
+Dialogue: 0,0:00:20.72,0:00:21.66,Default,,0,0,0,,EVEN TOP TECH
+Dialogue: 0,0:00:21.66,0:00:22.60,Default,,0,0,0,,EXPERTS ARE SCRAMBLING
+Dialogue: 0,0:00:22.60,0:00:23.78,Default,,0,0,0,,FOR SOLUTIONS AS
+Dialogue: 0,0:00:23.78,0:00:24.82,Default,,0,0,0,,THE CRISIS DEEPENS
+Dialogue: 0,0:00:24.82,0:00:26.22,Default,,0,0,0,,FOR NOW
+Dialogue: 0,0:00:26.68,0:00:27.66,Default,,0,0,0,,MICROSOFT IS RACING
+Dialogue: 0,0:00:27.66,0:00:28.82,Default,,0,0,0,,AGAINST TIME TO
+Dialogue: 0,0:00:28.82,0:00:29.74,Default,,0,0,0,,RESOLVE THIS DIGITAL
+Dialogue: 0,0:00:29.74,0:00:30.24,Default,,0,0,0,,DISASTER

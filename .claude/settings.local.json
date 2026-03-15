@@ -92,7 +92,10 @@
       "Bash(find:*)",
       "Bash(ffprobe:*)",
       "WebFetch(domain:www.contentstats.io)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(if not exist \"C:\\\\Users\\\\satya\\\\Desktop\\\\AI Agents\\\\tests\\\\integration\" mkdir \"C:\\\\Users\\\\satya\\\\Desktop\\\\AI Agents\\\\tests\\\\integration\")",
+      "Bash(celery -A app.core.celery_app purge:*)",
+      "Bash(cmd /c \"cd /d \"\"C:\\\\Users\\\\satya\\\\Desktop\\\\AI Agents\"\" && call venv\\\\Scripts\\\\activate.bat && celery -A app.core.celery_app purge -f\")"
     ]
   }
 }

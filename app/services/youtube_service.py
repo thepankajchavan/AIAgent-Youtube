@@ -10,10 +10,12 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from loguru import logger
 from tenacity import (
@@ -129,7 +131,14 @@ def _get_authenticated_service():
 
     if creds and creds.expired and creds.refresh_token:
         logger.info("Refreshing expired YouTube OAuth token …")
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except RefreshError as exc:
+            raise RuntimeError(
+                "YouTube OAuth token expired/revoked. Re-authenticate by running:\n"
+                "  python scripts/refresh_youtube_token.py\n"
+                f"Original error: {exc}"
+            ) from exc
     elif not creds or not creds.valid:
         if not secrets_path.exists():
             raise FileNotFoundError(
@@ -199,9 +208,11 @@ def upload_video(
     # Truncate title to YouTube limit
     title = title[:100]
 
-    # Append hashtags to description (YouTube shows last 3 above the title)
+    # Reorder hashtags so trending/viral ones appear last (YouTube shows last 3 above title)
     if hashtags:
-        description = description + "\n\n" + " ".join(hashtags)
+        from app.services.viral_service import ViralOptimizer
+        ordered_hashtags = ViralOptimizer().reorder_hashtags_for_youtube(hashtags)
+        description = description + "\n\n" + " ".join(ordered_hashtags[-8:])
 
     category_id = CATEGORY_IDS.get(category.lower(), "24")
 
@@ -282,10 +293,20 @@ def set_thumbnail(video_id: str, thumbnail_path: str | Path) -> bool:
         ).execute()
         logger.info("Thumbnail set for video {}", video_id)
         return True
+    except HttpError as exc:
+        if exc.resp.status == 403:
+            logger.warning(
+                "Cannot set thumbnail for video {} — channel not verified for "
+                "custom thumbnails. Verify at https://www.youtube.com/verify",
+                video_id,
+            )
+        else:
+            logger.warning(
+                "YouTube API error setting thumbnail for {}: {}", video_id, exc
+            )
+        return False
     except Exception as exc:
         logger.warning(
-            "Failed to set thumbnail for video {} (channel may not be verified): {}",
-            video_id,
-            exc,
+            "Failed to set thumbnail for video {}: {}", video_id, exc
         )
         return False

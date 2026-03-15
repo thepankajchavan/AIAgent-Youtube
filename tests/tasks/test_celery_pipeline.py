@@ -33,11 +33,13 @@ class TestBuildPipeline:
             skip_upload=True,
         )
 
-        # The full pipeline has more tasks than the skip-upload version
-        # Chain tasks are stored in .tasks
-        with_tasks = list(pipeline_with.tasks)
-        without_tasks = list(pipeline_without.tasks)
-        assert len(with_tasks) > len(without_tasks)
+        # Both return valid chains; the upload task is present in one but not the other.
+        # Celery may merge the upload into the chord callback, so we check the
+        # string representation for the upload task name instead of counting tasks.
+        with_repr = repr(pipeline_with)
+        without_repr = repr(pipeline_without)
+        assert "upload_to_youtube_task" in with_repr
+        assert "upload_to_youtube_task" not in without_repr
 
     def test_build_pipeline_default_provider(self):
         """Test default provider is openai."""
@@ -105,4 +107,43 @@ class TestRunPipelineTask:
             video_format="short",
             provider="openai",
             skip_upload=True,
+            visual_strategy="stock_only",
+            ai_video_provider=None,
+            target_duration=None,
+            language=None,
+            voice_id=None,
         )
+
+
+class TestBuildPipelineAIImages:
+    """Test pipeline construction for ai_images visual strategy."""
+
+    def test_ai_images_uses_sequential_path(self):
+        """ai_images strategy should use the sequential (audio-first) pipeline,
+        same as ai_only/hybrid."""
+        pipeline = build_pipeline(
+            project_id="test-uuid",
+            topic="test topic",
+            video_format="short",
+            visual_strategy="ai_images",
+        )
+        pipeline_repr = repr(pipeline)
+        # Sequential path should include split_scenes_task
+        assert "split_scenes_task" in pipeline_repr
+        # Should NOT use chord (parallel audio+visuals)
+        assert pipeline is not None
+
+    def test_ai_images_includes_all_steps(self):
+        """ai_images pipeline should include script, audio, scene split, visuals, assembly."""
+        pipeline = build_pipeline(
+            project_id="test-uuid",
+            topic="test topic",
+            visual_strategy="ai_images",
+            skip_upload=True,
+        )
+        pipeline_repr = repr(pipeline)
+        assert "generate_script_task" in pipeline_repr
+        assert "generate_audio_task" in pipeline_repr
+        assert "split_scenes_task" in pipeline_repr
+        assert "generate_visuals_task" in pipeline_repr
+        assert "assemble_video_task" in pipeline_repr

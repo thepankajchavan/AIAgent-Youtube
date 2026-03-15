@@ -53,8 +53,90 @@ class Scene:
     ai_prompt: str  # always provided
     duration_seconds: float
     video_path: str | None = None
+    image_path: str | None = None  # AI-generated source image (for ai_images strategy)
     generation_cost: float = 0.0
     provider_used: str | None = None
+    # Creative direction fields (Phase 4)
+    transition_type: str | None = None   # FFmpeg xfade type INTO this scene
+    mood: str | None = None              # Emotional tone for this scene
+    caption_emphasis: str | None = None  # "strong" | "normal" | "subtle"
+
+
+# ── Provider Duration Limits ─────────────────────────────────────
+
+_PROVIDER_MAX_DURATION: dict[str, float] = {
+    "runway": 10.0,
+    "stability": 10.0,
+    "kling": 10.0,
+}
+
+
+def _enforce_provider_duration_limits(
+    scenes: list[Scene],
+    provider: str,
+    total_duration: float,
+) -> list[Scene]:
+    """Split scenes that exceed a provider's max duration limit.
+
+    If a scene's duration exceeds the provider's limit (e.g. Runway 10s),
+    split it into sub-scenes with proportional durations and narration.
+    Total duration is preserved exactly.
+    """
+    max_dur = _PROVIDER_MAX_DURATION.get(provider, 10.0)
+
+    new_scenes: list[Scene] = []
+    for scene in scenes:
+        if scene.duration_seconds <= max_dur or scene.visual_type == "stock_footage":
+            new_scenes.append(scene)
+            continue
+
+        # Split into sub-scenes
+        num_splits = int(scene.duration_seconds / max_dur) + 1
+        sub_duration = round(scene.duration_seconds / num_splits, 1)
+
+        # Split narration roughly by word count
+        words = scene.narration.split()
+        words_per_split = max(1, len(words) // num_splits)
+
+        for j in range(num_splits):
+            start_idx = j * words_per_split
+            end_idx = start_idx + words_per_split if j < num_splits - 1 else len(words)
+            sub_narration = " ".join(words[start_idx:end_idx])
+
+            sub_scene = Scene(
+                scene_number=0,  # Will be renumbered
+                narration=sub_narration,
+                visual_description=scene.visual_description,
+                visual_type=scene.visual_type,
+                stock_query=scene.stock_query,
+                ai_prompt=scene.ai_prompt + (
+                    f" (continuation {j + 1}/{num_splits})" if num_splits > 1 else ""
+                ),
+                duration_seconds=sub_duration,
+                transition_type=scene.transition_type if j == 0 else "dissolve",
+                mood=scene.mood,
+                caption_emphasis=scene.caption_emphasis,
+            )
+            new_scenes.append(sub_scene)
+
+        logger.info(
+            "Scene {} split into {} sub-scenes (was {:.1f}s, max={:.1f}s)",
+            scene.scene_number, num_splits, scene.duration_seconds, max_dur,
+        )
+
+    # Renumber scenes
+    for i, s in enumerate(new_scenes):
+        s.scene_number = i + 1
+
+    # Fix rounding: ensure total matches
+    actual_total = sum(s.duration_seconds for s in new_scenes)
+    if total_duration > 0:
+        remainder = round(total_duration - actual_total, 1)
+        if abs(remainder) > 0.05:
+            longest = max(new_scenes, key=lambda s: s.duration_seconds)
+            longest.duration_seconds = round(longest.duration_seconds + remainder, 1)
+
+    return new_scenes
 
 
 # ── Cost Constants ───────────────────────────────────────────────
@@ -114,17 +196,20 @@ Given a video script, split it into distinct visual scenes for video production.
 
 DURATION FORMULA:
 - Target total duration: exactly {total_duration} seconds of AI-generated content.
-- Split into exactly 3 scenes.
-- The 3 scenes map to the script's 3 beats: Hook → Build → Payoff.
+- Split into 5 or 6 scenes for fast-paced, dynamic visuals.
+- The scenes map to the script's beats: Hook → Build 1 → Build 2 → Build 3 → Climax → Kicker (optional 6th).
 - Distribute duration proportionally to each scene's narration length.
 - The sum of all scene durations MUST equal {total_duration} seconds.
-- A pre-made outro clip is appended automatically — do NOT create a CTA scene.
+- Do NOT create a CTA/subscribe scene — the video ends with content only.
 
-STYLE CONSISTENCY:
-- All 3 scenes MUST share a unified visual palette: same color grading, lighting mood,
-  and overall aesthetic. Specify the shared look in EVERY ai_prompt.
-- Example: if Scene 1 uses "warm golden-hour lighting with amber tones",
-  Scenes 2 and 3 must reference the same lighting and color scheme.
+STYLE CONSISTENCY (CRITICAL):
+- Scene 1's ai_prompt MUST establish the video's visual DNA: a specific color palette
+  (e.g. "teal and amber color grading"), lighting style (e.g. "golden hour warm light"),
+  and aesthetic (e.g. "cinematic film grain, shallow depth of field").
+- All subsequent scenes MUST reference Scene 1's exact same palette and lighting in their ai_prompt.
+- Example: Scene 1 says "warm amber tones, golden hour light, shallow depth of field"
+  → Scene 3 MUST include "warm amber tones, golden hour light" even if the subject differs.
+- The visual DNA carries across scenes even when locations or subjects change.
 
 For each scene, provide:
 - scene_number: Sequential integer starting from 1
@@ -135,7 +220,7 @@ For each scene, provide:
   (e.g. "molten lava ocean" not "nature"). Always provide as fallback.
 - ai_prompt: A rich, cinematic prompt for AI video generation following the
   AI PROMPT GUIDELINES below. Keep under 120 words. Always provide.
-- duration_seconds: 10 seconds per scene (fixed, exactly 3 scenes)
+- duration_seconds: distribute proportionally across 5-6 scenes based on narration length
 
 AI PROMPT GUIDELINES — use specific vocabulary from these categories:
   Camera: dolly in, trucking shot, crane shot, steadicam, FPV, orbital, push-in,
@@ -149,6 +234,18 @@ AI PROMPT GUIDELINES — use specific vocabulary from these categories:
   Transitions: end each scene's prompt with a transition hint for the next scene
                (e.g. "camera rises into clouds" → next scene starts from above)
 
+CREATIVE DIRECTION (per scene — optional, for enhanced production):
+- transition_type: FFmpeg xfade transition INTO this scene. Options: fade, dissolve,
+  wipeleft, wiperight, slideleft, slideright, circlecrop, radial, smoothleft, smoothright.
+  Scene 1 should always be "fade".
+- mood: scene emotional tone. Options: energetic, calm, dramatic, mysterious, uplifting, dark.
+- caption_emphasis: "strong" for key reveals/twists, "normal" for standard narration,
+  "subtle" for bridge/transition moments.
+
+VISUAL HINTS: If the scriptwriter provided visual direction hints, use them as the FOUNDATION
+for each scene's ai_prompt — they contain camera angles, lighting, and color palette guidance.
+Expand them with cinematic vocabulary but preserve the intended visual direction.
+
 COHERENCE: each scene's visual must directly illustrate its narration — no random B-roll.
 
 Return ONLY a JSON object with key "scenes" containing a list of scene objects.
@@ -159,6 +256,10 @@ For a {format} video, use {orientation} framing in all visual descriptions.\
 _VISUAL_TYPE_INSTRUCTIONS = {
     "ai_only": (
         '"ai_generated" for ALL scenes — every scene will be rendered by an AI video model.'
+    ),
+    "ai_images": (
+        '"ai_generated" for ALL scenes — every scene will use an AI-generated image '
+        "with Ken Burns pan/zoom animation."
     ),
     "stock_only": (
         '"stock_footage" for ALL scenes — every scene will use Pexels stock footage.'
@@ -177,6 +278,7 @@ async def split_script_to_scenes(
     provider: str = "openai",
     visual_strategy: str = "hybrid",
     audio_duration: float | None = None,
+    visual_hints: list[str] | None = None,
 ) -> list[Scene]:
     """
     Use LLM to split a script into visual scenes.
@@ -188,6 +290,8 @@ async def split_script_to_scenes(
         visual_strategy: "hybrid" (LLM decides), "ai_only", or "stock_only".
         audio_duration: Exact TTS audio duration in seconds. When provided,
             scene durations are distributed to match audio precisely.
+        visual_hints: Per-beat visual direction hints from the scriptwriter.
+            When provided, these guide the scene planner's ai_prompt generation.
 
     Returns:
         List of Scene objects with visual_type assignments.
@@ -225,6 +329,18 @@ async def split_script_to_scenes(
     word_count = len(script.split())
     user_content = f"Script ({word_count} words):\n{script}"
 
+    # Inject visual direction hints from the scriptwriter
+    if visual_hints:
+        hints_block = "\n".join(
+            f"Beat {i + 1}: {hint}" for i, hint in enumerate(visual_hints) if hint
+        )
+        if hints_block:
+            user_content += (
+                f"\n\nVISUAL DIRECTION HINTS FROM SCRIPTWRITER:\n{hints_block}\n"
+                "Use these as the FOUNDATION for each scene's ai_prompt — they contain "
+                "camera angles, lighting, and color palette guidance from the scriptwriter."
+            )
+
     # Call LLM using existing infrastructure
     if provider == LLMProvider.ANTHROPIC.value or provider == "anthropic":
         result = await _call_anthropic_for_scenes(system_prompt, user_content)
@@ -246,6 +362,9 @@ async def split_script_to_scenes(
             stock_query=raw.get("stock_query", "nature"),
             ai_prompt=raw.get("ai_prompt", raw.get("visual_description", "")),
             duration_seconds=float(raw.get("duration_seconds", 10.0)),
+            transition_type=raw.get("transition_type"),
+            mood=raw.get("mood"),
+            caption_emphasis=raw.get("caption_emphasis"),
         )
         scenes.append(scene)
 
@@ -312,6 +431,25 @@ async def split_script_to_scenes(
                     drift_pct,
                 )
 
+    # Enforce provider duration limits (e.g. Runway 10s max)
+    if visual_strategy in ("ai_only", "hybrid", "ai_images"):
+        provider_name = settings.ai_video_primary_provider
+        original_count = len(scenes)
+        effective_total = (
+            float(audio_duration)
+            if audio_duration
+            else sum(s.duration_seconds for s in scenes)
+        )
+        scenes = _enforce_provider_duration_limits(scenes, provider_name, effective_total)
+        if len(scenes) != original_count:
+            logger.info(
+                "Duration limits applied — {} scenes → {} scenes (provider={}, max={}s)",
+                original_count,
+                len(scenes),
+                provider_name,
+                _PROVIDER_MAX_DURATION.get(provider_name, 10.0),
+            )
+
     logger.info(
         "Scene split complete — {} scenes ({} AI, {} stock, total={:.1f}s)",
         len(scenes),
@@ -337,7 +475,12 @@ async def _call_openai_for_scenes(system_prompt: str, user_content: str) -> dict
         temperature=0.7,
         max_tokens=4096,
     )
-    return json.loads(response.choices[0].message.content)
+    try:
+        return json.loads(response.choices[0].message.content)
+    except json.JSONDecodeError as e:
+        raw = response.choices[0].message.content
+        logger.error("OpenAI returned invalid JSON for scene split: {}\nRaw: {}", e, raw[:500])
+        raise ValueError(f"OpenAI returned invalid JSON for scene splitting: {e}") from e
 
 
 async def _call_anthropic_for_scenes(system_prompt: str, user_content: str) -> dict:
@@ -358,7 +501,11 @@ async def _call_anthropic_for_scenes(system_prompt: str, user_content: str) -> d
         raw = raw[first_newline + 1 :] if first_newline != -1 else raw[3:]
     if raw.rstrip().endswith("```"):
         raw = raw.rstrip()[:-3]
-    return json.loads(raw.strip())
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError as e:
+        logger.error("Anthropic returned invalid JSON for scene split: {}\nRaw: {}", e, raw[:500])
+        raise ValueError(f"Anthropic returned invalid JSON for scene splitting: {e}") from e
 
 
 # ── Prompt Enhancement ────────────────────────────────────────────
@@ -481,6 +628,90 @@ def _enhance_kling_prompt(prompt: str, aspect_ratio: str = "9:16") -> str:
     return prompt
 
 
+# ── Intelligent Prompt Rewriting ─────────────────────────────────
+
+_PROVIDER_REWRITE_INSTRUCTIONS: dict[str, str] = {
+    "runway": (
+        "Optimize this prompt for Runway Gen-4 text-to-video. "
+        "Runway excels at: smooth camera motion, cinematic tracking shots, "
+        "realistic lighting, and dynamic scenes with flowing movement. "
+        "Emphasize: camera movement direction, motion of subjects, lighting transitions. "
+        "Keep under 400 words. Do NOT add unrelated elements."
+    ),
+    "stability": (
+        "Optimize this prompt for Stability AI image-to-video. "
+        "The output will be a still image animated with subtle motion. "
+        "Emphasize: strong composition, dramatic lighting, clear focal point, "
+        "photographic detail, and elements that animate well (water, clouds, fabric). "
+        "Keep under 300 words. Do NOT add unrelated elements."
+    ),
+    "kling": (
+        "Optimize this prompt for Kling AI text-to-video. "
+        "Kling excels at: fast-paced dynamic scenes, character animation, "
+        "and dramatic compositions. "
+        "Emphasize: action, movement direction, dramatic angles, dynamic energy. "
+        "Keep under 400 words. Do NOT add unrelated elements."
+    ),
+}
+
+
+async def _rewrite_prompt_for_provider(
+    prompt: str,
+    provider: str,
+    aspect_ratio: str = "9:16",
+    style_anchor: str = "",
+) -> str:
+    """Use LLM to rewrite a scene prompt optimized for a specific AI video provider.
+
+    Falls back to token-append enhancement if LLM call fails.
+    """
+    instruction = _PROVIDER_REWRITE_INSTRUCTIONS.get(provider)
+    if not instruction:
+        return _enhance_runway_prompt(prompt, aspect_ratio)
+
+    framing = "vertical 9:16 portrait" if aspect_ratio == "9:16" else "horizontal 16:9 landscape"
+
+    system = (
+        f"{instruction}\n"
+        f"Framing: {framing}.\n"
+    )
+    if style_anchor:
+        system += f"Style anchor (MUST preserve): {style_anchor}\n"
+    system += "Return ONLY the rewritten prompt text. No explanations."
+
+    try:
+        from app.services.llm_service import _get_openai
+        client = _get_openai()
+        response = await client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"Original prompt:\n{prompt}"},
+            ],
+            temperature=0.4,
+            max_tokens=600,
+        )
+        rewritten = response.choices[0].message.content.strip()
+        if len(rewritten) < 20:
+            raise ValueError("Rewritten prompt too short")
+        logger.debug(
+            "Prompt rewritten for {} — {} → {} chars",
+            provider, len(prompt), len(rewritten),
+        )
+        return rewritten
+    except Exception as exc:
+        logger.warning(
+            "Prompt rewrite failed for {} ({}), using token-append fallback",
+            provider, exc,
+        )
+        enhancer = {
+            "runway": _enhance_runway_prompt,
+            "stability": _enhance_stability_prompt,
+            "kling": _enhance_kling_prompt,
+        }.get(provider, _enhance_runway_prompt)
+        return enhancer(prompt, aspect_ratio)
+
+
 # ── AI Video Provider Implementations ────────────────────────────
 
 
@@ -545,6 +776,14 @@ async def generate_ai_video_runway(
                 create_response.status_code,
                 create_response.text[:500],
             )
+            # Detect billing/credit issues — skip retries immediately
+            if create_response.status_code == 400:
+                error_text = create_response.text.lower()
+                if any(kw in error_text for kw in ("credit", "billing", "quota", "plan")):
+                    raise RuntimeError(
+                        f"Runway billing/credit issue (not retryable): "
+                        f"{create_response.text[:200]}"
+                    )
         create_response.raise_for_status()
         task_id = create_response.json().get("id")
         logger.info("Runway task created — id={}", task_id)
@@ -636,6 +875,14 @@ async def generate_ai_video_stability(
                 "aspect_ratio": "9:16",
             },
         )
+        # Detect billing/credit issues — skip retries immediately
+        if img_response.status_code in (400, 402, 403):
+            error_text = img_response.text.lower()
+            if any(kw in error_text for kw in ("credit", "billing", "quota", "plan", "insufficient")):
+                raise RuntimeError(
+                    f"Stability billing/credit issue (not retryable): "
+                    f"{img_response.text[:200]}"
+                )
         img_response.raise_for_status()
 
         image_path = output_dir / f"stability_img_{uuid.uuid4().hex[:8]}.png"
@@ -788,11 +1035,25 @@ async def _generate_with_provider(
     provider: str,
     scene: Scene,
     aspect_ratio: str,
+    style_anchor: str = "",
 ) -> Path:
-    """Route generation to the correct provider."""
+    """Route generation to the correct provider with optional prompt rewriting."""
     duration = max(2, round(scene.duration_seconds))
+
+    # LLM-based prompt rewriting (opt-in)
+    if getattr(settings, "prompt_rewriting_enabled", False):
+        scene.ai_prompt = await _rewrite_prompt_for_provider(
+            scene.ai_prompt, provider, aspect_ratio, style_anchor
+        )
+
     if provider == "runway":
-        # Runway API max duration is 10s
+        # Runway API max duration is 10s — should be handled at planning time
+        if duration > 10:
+            logger.warning(
+                "Scene {} duration {}s exceeds Runway 10s max "
+                "(should have been split at planning time)",
+                scene.scene_number, duration,
+            )
         runway_dur = min(duration, 10)
         return await generate_ai_video_runway(scene.ai_prompt, runway_dur, aspect_ratio)
     elif provider == "stability":
@@ -803,12 +1064,14 @@ async def _generate_with_provider(
 
 
 async def _fetch_stock_for_scene(scene: Scene, orientation: str) -> Path:
-    """Fetch a single stock clip for a scene via Pexels, with placeholder fallback."""
+    """Fetch a single stock clip for a scene via Pexels, with query expansion and placeholder fallback."""
     try:
         clips = await fetch_clips(
             queries=[scene.stock_query],
             orientation=orientation,
             clips_per_query=1,
+            narrations=[scene.narration],
+            expand_queries=True,
         )
         if clips:
             return clips[0]
@@ -827,10 +1090,12 @@ async def generate_scene_visual(
     scene: Scene,
     video_format: str,
     project_id: str,
+    total_scenes: int = 5,
 ) -> Path:
     """
     Generate a visual for a single scene with full fallback chain:
-        1. Primary AI provider  (if visual_type == "ai_generated")
+        0. AI image + Ken Burns  (if ai_images_enabled — cheapest)
+        1. Primary AI provider   (if visual_type == "ai_generated")
         2. Secondary AI provider (if primary fails)
         3. Stock footage         (Pexels)
         4. Placeholder video     (solid colour)
@@ -847,6 +1112,55 @@ async def generate_scene_visual(
         scene.provider_used = "pexels"
         return path
 
+    # ── AI Images path (DALL-E + Ken Burns) — much cheaper than video gen ──
+    if settings.ai_images_enabled:
+        try:
+            from app.services.image_gen_service import (
+                estimate_image_cost,
+                generate_scene_image,
+            )
+            from app.services.media_service import image_to_video_clip
+
+            img_cost = estimate_image_cost(
+                settings.ai_images_model,
+                settings.ai_images_size,
+                settings.ai_images_quality,
+            )
+
+            if not await check_budget(img_cost):
+                logger.warning(
+                    "Daily budget exceeded, skipping AI image for scene {}",
+                    scene.scene_number,
+                )
+            else:
+                image_path = await generate_scene_image(
+                    prompt=scene.ai_prompt,
+                    size=settings.ai_images_size,
+                    model=settings.ai_images_model,
+                    quality=settings.ai_images_quality,
+                )
+                video_path = image_to_video_clip(
+                    image_path=image_path,
+                    duration=scene.duration_seconds,
+                    scene_number=scene.scene_number,
+                    total_scenes=total_scenes,
+                )
+                await record_spend(img_cost)
+                scene.video_path = str(video_path)
+                scene.image_path = str(image_path)
+                scene.generation_cost = img_cost
+                scene.provider_used = settings.ai_images_model
+                logger.info(
+                    "Scene {} generated via AI image + Ken Burns (${:.2f})",
+                    scene.scene_number, img_cost,
+                )
+                return video_path
+        except Exception as exc:
+            logger.warning(
+                "AI image generation failed for scene {}: {} — trying AI video providers",
+                scene.scene_number, exc,
+            )
+
     primary = settings.ai_video_primary_provider
     secondary = settings.ai_video_secondary_provider
 
@@ -854,9 +1168,11 @@ async def generate_scene_visual(
     estimated = estimate_cost(scene.duration_seconds, primary)
     if estimated > settings.ai_video_max_cost_per_video:
         logger.warning(
-            "Scene {} estimated cost ${:.2f} exceeds per-video cap, using stock",
+            "Scene {} estimated cost ${:.2f} exceeds per-scene budget "
+            "(cap=${:.2f}), using stock",
             scene.scene_number,
             estimated,
+            settings.ai_video_max_cost_per_video,
         )
         path = await _fetch_stock_for_scene(scene, orientation)
         scene.video_path = str(path)
@@ -925,6 +1241,60 @@ async def generate_scene_visual(
 # ── Parallel Scene Generation ────────────────────────────────────
 
 
+# ── Visual Continuity (Style Anchor) ────────────────────────────
+
+_STYLE_TOKENS: dict[str, list[str]] = {
+    "lighting": [
+        "golden hour", "neon-lit", "overcast", "backlit", "low-key",
+        "high-key", "rembrandt", "warm lighting", "cold lighting",
+        "volumetric lighting", "natural light", "dramatic lighting",
+        "torch-lit", "candlelight", "moonlight",
+    ],
+    "color": [
+        "warm tones", "cool tones", "muted", "saturated", "desaturated",
+        "amber", "blue-grey", "cyan", "teal", "orange-teal", "monochrome",
+        "pastel", "neon", "earthy", "golden", "sepia", "warm amber",
+    ],
+    "aesthetic": [
+        "cinematic", "documentary", "film noir", "vintage", "futuristic",
+        "minimalist", "gritty", "ethereal", "surreal", "photorealistic",
+        "8k", "film grain", "shallow depth of field",
+    ],
+}
+
+
+def _build_style_anchor(scenes: list[Scene]) -> str:
+    """Extract visual DNA from Scene 1's ai_prompt for cross-scene consistency.
+
+    Scans the first scene's prompt for lighting, color, and aesthetic tokens
+    and returns a concise style anchor string.
+    """
+    if not scenes or not scenes[0].ai_prompt:
+        return ""
+
+    first_prompt = scenes[0].ai_prompt.lower()
+
+    found_tokens: list[str] = []
+    for tokens in _STYLE_TOKENS.values():
+        for token in tokens:
+            if token in first_prompt:
+                found_tokens.append(token)
+
+    if not found_tokens:
+        return ""
+
+    return "VISUAL CONSISTENCY: maintain " + ", ".join(found_tokens[:8]) + "."
+
+
+def _apply_style_anchor(scene: Scene, anchor: str) -> None:
+    """Prepend the visual style anchor to a scene's ai_prompt."""
+    if not anchor or not scene.ai_prompt:
+        return
+    if anchor.lower() in scene.ai_prompt.lower():
+        return  # Already contains the anchor
+    scene.ai_prompt = f"{anchor} {scene.ai_prompt}"
+
+
 async def generate_all_visuals(
     scenes: list[Scene],
     video_format: str,
@@ -937,11 +1307,21 @@ async def generate_all_visuals(
     Uses asyncio.Semaphore to limit concurrent AI API calls
     and prevent rate-limiting. Returns paths in scene order.
     """
+    # Apply visual style anchor for cross-scene consistency
+    if getattr(settings, "visual_continuity_enabled", True) and len(scenes) > 1:
+        anchor = _build_style_anchor(scenes)
+        if anchor:
+            for scene in scenes[1:]:
+                _apply_style_anchor(scene, anchor)
+            logger.info("Visual style anchor applied — '{}'", anchor[:80])
+
     semaphore = asyncio.Semaphore(max_concurrent)
+
+    total_scenes = len(scenes)
 
     async def _generate_with_limit(scene: Scene) -> Path:
         async with semaphore:
-            return await generate_scene_visual(scene, video_format, project_id)
+            return await generate_scene_visual(scene, video_format, project_id, total_scenes)
 
     tasks = [_generate_with_limit(scene) for scene in scenes]
     results = await asyncio.gather(*tasks, return_exceptions=True)

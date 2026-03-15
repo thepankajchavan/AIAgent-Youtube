@@ -13,6 +13,12 @@ from app.models.base import Base
 # Import every model so Base.metadata knows about them
 from app.models.video import VideoProject  # noqa: F401
 from app.models.telegram_user import TelegramUser  # noqa: F401
+from app.models.analytics import (  # noqa: F401
+    VideoAnalytics,
+    TrendingTopic,
+    PerformancePattern,
+    PromptVersion,
+)
 
 # ── Alembic Config ───────────────────────────────────────────
 config = context.config

@@ -1,0 +1,46 @@
+[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,28,&H00FFFFFF&,&H0000FFFF&,&H00000000&,&H80000000&,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,200,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.76,Default,,0,0,0,,DID YOU KNOW
+Dialogue: 0,0:00:00.76,0:00:02.54,Default,,0,0,0,,INDIA'S LPG SUPPLY
+Dialogue: 0,0:00:02.54,0:00:03.38,Default,,0,0,0,,IS DOWN BY
+Dialogue: 0,0:00:03.38,0:00:03.72,Default,,0,0,0,,30
+Dialogue: 0,0:00:04.10,0:00:05.14,Default,,0,0,0,,DUE TO A
+Dialogue: 0,0:00:05.14,0:00:05.62,Default,,0,0,0,,DISTANT CONFLICT
+Dialogue: 0,0:00:06.72,0:00:07.60,Default,,0,0,0,,IMAGINE WAITING HOURS
+Dialogue: 0,0:00:07.60,0:00:08.40,Default,,0,0,0,,FOR A GAS
+Dialogue: 0,0:00:08.40,0:00:09.34,Default,,0,0,0,,CYLINDER THAT NEVER
+Dialogue: 0,0:00:09.34,0:00:09.84,Default,,0,0,0,,ARRIVES
+Dialogue: 0,0:00:10.36,0:00:11.28,Default,,0,0,0,,THAT'S THE REALITY
+Dialogue: 0,0:00:11.28,0:00:12.66,Default,,0,0,0,,FOR MILLIONS OF
+Dialogue: 0,0:00:12.66,0:00:13.22,Default,,0,0,0,,INDIANS TODAY
+Dialogue: 0,0:00:14.32,0:00:14.74,Default,,0,0,0,,WEST ASIA
+Dialogue: 0,0:00:15.14,0:00:16.14,Default,,0,0,0,,A MAJOR ENERGY
+Dialogue: 0,0:00:16.14,0:00:16.48,Default,,0,0,0,,HUB
+Dialogue: 0,0:00:16.84,0:00:18.04,Default,,0,0,0,,IS EMBROILED IN
+Dialogue: 0,0:00:18.04,0:00:18.30,Default,,0,0,0,,CONFLICT
+Dialogue: 0,0:00:18.88,0:00:19.90,Default,,0,0,0,,CRIPPLING SUPPLY LINES
+Dialogue: 0,0:00:19.90,0:00:20.90,Default,,0,0,0,,AND CAUSING A
+Dialogue: 0,0:00:20.90,0:00:21.56,Default,,0,0,0,,RIPPLE EFFECT IN
+Dialogue: 0,0:00:21.56,0:00:22.32,Default,,0,0,0,,GLOBAL MARKETS
+Dialogue: 0,0:00:23.28,0:00:24.58,Default,,0,0,0,,PRICES ARE SKYROCKETING
+Dialogue: 0,0:00:24.58,0:00:25.96,Default,,0,0,0,,AND ESSENTIAL SERVICES
+Dialogue: 0,0:00:25.96,0:00:27.10,Default,,0,0,0,,ARE GRINDING TO
+Dialogue: 0,0:00:27.10,0:00:27.54,Default,,0,0,0,,A HALT
+Dialogue: 0,0:00:28.16,0:00:29.24,Default,,0,0,0,,AFFECTING EVERYDAY LIFE
+Dialogue: 0,0:00:29.24,0:00:30.72,Default,,0,0,0,,DRASTICALLY THIS ISN'T
+Dialogue: 0,0:00:30.72,0:00:31.52,Default,,0,0,0,,JUST A SHORTAGE
+Dialogue: 0,0:00:31.96,0:00:32.50,Default,,0,0,0,,IT'S A GLIMPSE
+Dialogue: 0,0:00:32.50,0:00:33.50,Default,,0,0,0,,INTO HOW GLOBAL
+Dialogue: 0,0:00:33.50,0:00:34.94,Default,,0,0,0,,TENSIONS CAN RESHAPE
+Dialogue: 0,0:00:34.94,0:00:35.94,Default,,0,0,0,,OUR DAILY EXISTENCE

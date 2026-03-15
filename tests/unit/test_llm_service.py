@@ -370,6 +370,63 @@ class TestSearchContextInjection:
         assert "REAL-TIME RESEARCH" not in user_message["content"]
 
 
+class TestNicheDetection:
+    """Test niche tone template detection."""
+
+    def test_detects_science_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("The physics of black holes") == "science"
+
+    def test_detects_history_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("Ancient Roman Empire facts") == "history"
+
+    def test_detects_space_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("Mars colonization by NASA") == "space"
+
+    def test_detects_technology_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("New AI robot breakthrough") == "technology"
+
+    def test_detects_psychology_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("Cognitive bias in the brain") == "psychology"
+
+    def test_detects_motivation_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("Success mindset and habits") == "motivation"
+
+    def test_detects_entertainment_niche(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("Netflix show review") == "entertainment"
+
+    def test_unknown_topic_returns_none(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("Random cooking recipes") is None
+
+    def test_case_insensitive(self):
+        from app.services.llm_service import _detect_niche
+        assert _detect_niche("SPACE exploration NASA") == "space"
+
+
+class TestFewShotExamples:
+    """Test that few-shot examples are in the system prompt."""
+
+    def test_system_prompt_contains_examples(self):
+        from app.services.llm_service import SHORT_SYSTEM_PROMPT
+        assert "EXAMPLE SCRIPTS" in SHORT_SYSTEM_PROMPT
+        assert "Example 1" in SHORT_SYSTEM_PROMPT
+        assert "Example 2" in SHORT_SYSTEM_PROMPT
+        assert "Example 3" in SHORT_SYSTEM_PROMPT
+
+    def test_examples_cover_different_niches(self):
+        from app.services.llm_service import SHORT_SYSTEM_PROMPT
+        assert "Science" in SHORT_SYSTEM_PROMPT
+        assert "History" in SHORT_SYSTEM_PROMPT
+        assert "Motivation" in SHORT_SYSTEM_PROMPT
+
+
 class TestQualityRetryAndFallback:
     """Test quality validation, corrective retry, and provider fallback."""
 

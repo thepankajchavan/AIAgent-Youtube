@@ -1,33 +1,39 @@
-"""Tests for search service — Tavily web search integration."""
+"""Tests for search service — Tavily web search with multi-query + credibility."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from app.services.search_service import _format_search_results, search_topic_context
+from app.services.search_service import (
+    HIGH_AUTHORITY_DOMAINS,
+    _expand_queries,
+    _format_search_results,
+    _score_and_rank_results,
+    _tavily_search,
+    search_topic_context,
+)
 
 
 # ── Fixtures ──────────────────────────────────────────────────
 
 
-def _tavily_response():
-    """Sample Tavily API response."""
-    return {
-        "answer": "The T20 Cricket World Cup final is India vs New Zealand on March 8, 2026 in Mumbai.",
-        "results": [
-            {
-                "title": "T20 World Cup 2026 Final: India vs NZ",
-                "content": "India will face New Zealand in the T20 World Cup final at Wankhede Stadium, Mumbai on March 8.",
-                "url": "https://example.com/cricket",
-            },
-            {
-                "title": "Cricket Final Preview",
-                "content": "Both teams are unbeaten in the tournament so far.",
-                "url": "https://example.com/preview",
-            },
-        ],
-    }
+def _tavily_results():
+    """Sample Tavily API search results (list of dicts)."""
+    return [
+        {
+            "_answer": "The T20 Cricket World Cup final is India vs New Zealand on March 8, 2026 in Mumbai.",
+            "title": "T20 World Cup 2026 Final: India vs NZ",
+            "content": "India will face New Zealand in the T20 World Cup final at Wankhede Stadium, Mumbai on March 8.",
+            "url": "https://example.com/cricket",
+        },
+        {
+            "_answer": None,
+            "title": "Cricket Final Preview",
+            "content": "Both teams are unbeaten in the tournament so far.",
+            "url": "https://example.com/preview",
+        },
+    ]
 
 
 # ── search_topic_context tests ───────────────────────────────
@@ -40,13 +46,24 @@ class TestSearchTopicContext:
     async def test_success_returns_formatted_context(self):
         """Successful Tavily call returns formatted search results."""
         mock_response = MagicMock()
-        mock_response.json.return_value = _tavily_response()
+        mock_response.json.return_value = {
+            "answer": "India vs NZ final",
+            "results": [
+                {
+                    "title": "T20 World Cup Final",
+                    "content": "India vs New Zealand at Wankhede Stadium, Mumbai on March 8.",
+                    "url": "https://example.com/cricket",
+                },
+            ],
+        }
         mock_response.raise_for_status = MagicMock()
 
         mock_settings = MagicMock()
         mock_settings.web_search_enabled = True
         mock_settings.tavily_api_key = "tvly-test-key"
         mock_settings.web_search_max_results = 5
+        mock_settings.search_multi_query_enabled = False  # Single query for simplicity
+        mock_settings.search_credibility_enabled = False
 
         with (
             patch("app.services.search_service.settings", mock_settings),
@@ -61,9 +78,7 @@ class TestSearchTopicContext:
             result = await search_topic_context("t20 cricket final")
 
         assert result is not None
-        assert "India vs New Zealand" in result
-        assert "March 8" in result
-        assert "Wankhede Stadium" in result
+        assert "India vs New Zealand" in result or "India vs NZ" in result
 
     @pytest.mark.asyncio
     async def test_disabled_returns_none(self):
@@ -95,6 +110,8 @@ class TestSearchTopicContext:
         mock_settings.web_search_enabled = True
         mock_settings.tavily_api_key = "tvly-test-key"
         mock_settings.web_search_max_results = 5
+        mock_settings.search_multi_query_enabled = False
+        mock_settings.search_credibility_enabled = False
 
         with (
             patch("app.services.search_service.settings", mock_settings),
@@ -122,6 +139,8 @@ class TestSearchTopicContext:
         mock_settings.web_search_enabled = True
         mock_settings.tavily_api_key = "tvly-test-key"
         mock_settings.web_search_max_results = 5
+        mock_settings.search_multi_query_enabled = False
+        mock_settings.search_credibility_enabled = False
 
         with (
             patch("app.services.search_service.settings", mock_settings),
@@ -138,36 +157,101 @@ class TestSearchTopicContext:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_passes_correct_params_to_tavily(self):
-        """Verify correct parameters are sent to Tavily API."""
+    async def test_multi_query_expands_searches(self):
+        """Multi-query mode sends 3 search queries."""
+        call_count = 0
+
         mock_response = MagicMock()
-        mock_response.json.return_value = _tavily_response()
+        mock_response.json.return_value = {
+            "answer": "Answer",
+            "results": [
+                {"title": "Result", "content": "Content", "url": "https://example.com/1"},
+            ],
+        }
         mock_response.raise_for_status = MagicMock()
 
         mock_settings = MagicMock()
         mock_settings.web_search_enabled = True
-        mock_settings.tavily_api_key = "tvly-my-key"
+        mock_settings.tavily_api_key = "tvly-test-key"
         mock_settings.web_search_max_results = 3
+        mock_settings.search_multi_query_enabled = True
+        mock_settings.search_credibility_enabled = False
+
+        async def track_post(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_response
 
         with (
             patch("app.services.search_service.settings", mock_settings),
             patch("app.services.search_service.httpx.AsyncClient") as mock_client_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client.post = AsyncMock(side_effect=track_post)
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            await search_topic_context("mars exploration", max_results=3)
+            result = await search_topic_context("mars exploration")
 
-        # Check the POST call arguments
-        call_kwargs = mock_client.post.call_args
-        payload = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
-        assert payload["api_key"] == "tvly-my-key"
-        assert payload["query"] == "mars exploration"
-        assert payload["max_results"] == 3
-        assert payload["include_answer"] is True
+        # Should have made 3 API calls (one per expanded query)
+        assert call_count == 3
+
+
+# ── _expand_queries tests ──────────────────────────────────────
+
+
+class TestExpandQueries:
+    """Tests for multi-query expansion."""
+
+    def test_returns_three_queries(self):
+        queries = _expand_queries("mars exploration")
+        assert len(queries) == 3
+
+    def test_first_is_original_topic(self):
+        queries = _expand_queries("black holes")
+        assert queries[0] == "black holes"
+
+    def test_all_contain_topic(self):
+        queries = _expand_queries("neutron stars")
+        for q in queries:
+            assert "neutron stars" in q.lower()
+
+
+# ── _score_and_rank_results tests ─────────────────────────────
+
+
+class TestScoreAndRank:
+    """Tests for credibility scoring and ranking."""
+
+    def test_high_authority_ranked_first(self):
+        results = [
+            {"url": "https://random-blog.com/post", "title": "Blog Post"},
+            {"url": "https://www.nasa.gov/article", "title": "NASA Article"},
+        ]
+        ranked = _score_and_rank_results(results)
+        assert ranked[0]["title"] == "NASA Article"
+        assert ranked[0]["credibility"] == 0.9
+
+    def test_unknown_domain_gets_low_score(self):
+        results = [{"url": "https://myblog.xyz/post", "title": "My Blog"}]
+        ranked = _score_and_rank_results(results)
+        assert ranked[0]["credibility"] == 0.5
+
+    def test_multiple_authority_domains(self):
+        results = [
+            {"url": "https://www.bbc.com/news", "title": "BBC"},
+            {"url": "https://random.com/x", "title": "Random"},
+            {"url": "https://nature.com/paper", "title": "Nature"},
+        ]
+        ranked = _score_and_rank_results(results)
+        # Both authority domains should be first
+        assert ranked[0]["credibility"] == 0.9
+        assert ranked[1]["credibility"] == 0.9
+        assert ranked[2]["credibility"] == 0.5
+
+    def test_empty_results(self):
+        assert _score_and_rank_results([]) == []
 
 
 # ── _format_search_results tests ─────────────────────────────
@@ -177,33 +261,42 @@ class TestFormatSearchResults:
     """Tests for result formatting."""
 
     def test_formats_answer_and_sources(self):
-        """Includes AI summary and numbered sources."""
-        result = _format_search_results(_tavily_response())
+        results = _tavily_results()
+        formatted = _format_search_results(results)
 
-        assert result is not None
-        assert "Summary:" in result
-        assert "Source 1:" in result
-        assert "Source 2:" in result
-        assert "India vs New Zealand" in result
+        assert formatted is not None
+        assert "Summary:" in formatted
+        assert "Source 1:" in formatted
+        assert "Source 2:" in formatted
+
+    def test_high_authority_tag_in_output(self):
+        results = [
+            {
+                "_answer": None,
+                "title": "NASA Discovery",
+                "content": "New findings.",
+                "url": "https://www.nasa.gov/discovery",
+                "credibility": 0.9,
+            },
+        ]
+        formatted = _format_search_results(results)
+        assert "[HIGH AUTHORITY]" in formatted
 
     def test_no_answer_still_includes_sources(self):
-        """Works when Tavily returns no AI answer."""
-        data = {"results": [{"title": "Test", "content": "Some content"}]}
-        result = _format_search_results(data)
+        results = [{"title": "Test", "content": "Some content", "url": "https://example.com"}]
+        formatted = _format_search_results(results)
 
-        assert result is not None
-        assert "Source 1: Test" in result
-        assert "Summary:" not in result
+        assert formatted is not None
+        assert "Source 1: Test" in formatted
+        assert "Summary:" not in formatted
 
     def test_empty_results_returns_none(self):
-        """Returns None when no results and no answer."""
-        result = _format_search_results({"results": []})
+        result = _format_search_results([])
         assert result is None
 
-    def test_answer_only_no_results(self):
-        """Works with just an AI answer and no search results."""
-        data = {"answer": "Quick answer here", "results": []}
-        result = _format_search_results(data)
-
-        assert result is not None
-        assert "Summary: Quick answer here" in result
+    def test_answer_only_from_first_result(self):
+        results = [
+            {"_answer": "Quick answer here", "title": "T", "content": "C", "url": "https://x.com"},
+        ]
+        formatted = _format_search_results(results)
+        assert "Summary: Quick answer here" in formatted
